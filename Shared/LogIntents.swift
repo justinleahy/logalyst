@@ -6,7 +6,7 @@ import HealthKit
 /// Saves water to Health from Siri, Shortcuts, a widget button or Control Center.
 struct LogWaterIntent: AppIntent {
     static let title: LocalizedStringResource = "Log Water"
-    static let description = IntentDescription("Saves water to Apple Health. Leave the amount empty to log a glass.")
+    static let description = IntentDescription("Saves water to the Health app. Leave the amount empty to log a glass.")
     /// Health data can't be written while the phone is locked, and a locked phone shouldn't log on your behalf.
     static let authenticationPolicy = IntentAuthenticationPolicy.requiresAuthentication
 
@@ -49,7 +49,7 @@ struct WaterUnitOptions: DynamicOptionsProvider {
 /// so "Log 16 ounces of water in Health Logger" works in one sentence.
 struct LogWaterServingIntent: AppIntent {
     static let title: LocalizedStringResource = "Log Water Serving"
-    static let description = IntentDescription("Saves a common serving of water, like 16 fl oz or 500 mL, to Apple Health.")
+    static let description = IntentDescription("Saves a common serving of water, like 16 fl oz or 500 mL, to the Health app.")
     static let authenticationPolicy = IntentAuthenticationPolicy.requiresAuthentication
 
     @Parameter(title: "Serving", requestValueDialog: "How much water?")
@@ -115,7 +115,7 @@ enum WaterServing: String, AppEnum {
 struct LogMetricIntent: AppIntent {
     static let title: LocalizedStringResource = "Log Metric"
     static let description = IntentDescription(
-        "Saves a value, like your weight, blood glucose or caffeine, to Apple Health. Water has its own action.")
+        "Saves a value, like your weight, blood glucose or caffeine, to the Health app. Water has its own action.")
     static let authenticationPolicy = IntentAuthenticationPolicy.requiresAuthentication
 
     @Parameter(title: "Metric", requestValueDialog: "What would you like to log?")
