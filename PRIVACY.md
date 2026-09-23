@@ -39,8 +39,8 @@ Health Logger keeps a few things in its own storage on your device:
 - **Settings:** your preferred units, daily goals and limits, and favorite metrics.
 - **My Foods:** the foods you save, with their nutrition per serving and barcode. These stay on your iPhone.
 
-Your favorites sync between your iPhone and Apple Watch directly over Apple's Watch connection. They don't go
-through any server.
+Your favorites and daily goals sync between your iPhone and Apple Watch directly over Apple's Watch connection.
+They don't go through any server.
 
 ## Camera
 
