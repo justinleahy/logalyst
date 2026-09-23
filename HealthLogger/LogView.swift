@@ -3,31 +3,46 @@ import SwiftUI
 struct LogView: View {
     @Binding var path: [Metric]
     @Environment(HealthStore.self) private var health
+    @State private var search = ""
 
     var body: some View {
         NavigationStack(path: $path) {
             List {
-                Section {
-                    ForEach(health.favorites) { row(for: $0) }
-                } header: {
-                    Label("Favorites", systemImage: "star")
-                } footer: {
-                    if health.favorites.isEmpty {
-                        Text("Swipe right on a metric, or touch and hold it, to add it to Favorites.")
-                    }
-                }
-                ForEach(MetricCategory.allCases) { category in
+                if search.isEmpty {
                     Section {
-                        ForEach(Metric.metrics(in: category)) { row(for: $0) }
+                        ForEach(health.favorites) { row(for: $0) }
                     } header: {
-                        Label(category.title, systemImage: category.systemImage)
+                        Label("Favorites", systemImage: "star")
+                    } footer: {
+                        if health.favorites.isEmpty {
+                            Text("Swipe right on a metric, or touch and hold it, to add it to Favorites.")
+                        }
                     }
+                    ForEach(MetricCategory.allCases) { category in
+                        Section {
+                            ForEach(Metric.metrics(in: category)) { row(for: $0) }
+                        } header: {
+                            Label(category.title, systemImage: category.systemImage)
+                        }
+                    }
+                } else {
+                    ForEach(searchResults) { row(for: $0) }
                 }
             }
+            .overlay {
+                if !search.isEmpty && searchResults.isEmpty {
+                    ContentUnavailableView.search(text: search)
+                }
+            }
+            .searchable(text: $search, prompt: "Search Metrics")
             .navigationTitle("Log Health Data")
             // A widget link can swap the open metric; the id gives the new one fresh state.
             .navigationDestination(for: Metric.self) { EntryView(metric: $0).id($0) }
         }
+    }
+
+    private var searchResults: [Metric] {
+        Metric.search(search)
     }
 
     private func row(for metric: Metric) -> some View {

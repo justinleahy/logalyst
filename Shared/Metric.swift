@@ -106,12 +106,19 @@ struct Metric: Identifiable, Hashable {
     var onWatch = true
     /// Daily goal shown on the Nutrition screen.
     var dailyGoal: DailyGoal?
+    /// Other words people might search for (e.g. "carbs" for Carbohydrates).
+    var keywords: [String] = []
 
     static func == (lhs: Metric, rhs: Metric) -> Bool { lhs.id == rhs.id }
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
 
     var unitOptions: [UnitOption] {
         if case .quantity(_, let options) = kind { options } else { [] }
+    }
+
+    /// Whether the metric's name, category or keywords contain the search text.
+    func matches(_ search: String) -> Bool {
+        ([name, category.title] + keywords).contains { $0.localizedStandardContains(search) }
     }
 
     /// The HealthKit types this metric writes.
@@ -190,6 +197,12 @@ extension Metric {
         all.filter { $0.category == category && (!watchOnly || $0.onWatch) }
     }
 
+    /// Metrics matching the search text, in catalog order.
+    static func search(_ text: String, watchOnly: Bool = false) -> [Metric] {
+        let text = text.trimmingCharacters(in: .whitespaces)
+        return all.filter { (!watchOnly || $0.onWatch) && (text.isEmpty || $0.matches(text)) }
+    }
+
     static func metric(id: String) -> Metric? {
         all.first { $0.id == id }
     }
@@ -200,7 +213,7 @@ extension Metric {
 
     private static let vitals: [Metric] = [
         Metric(id: "bloodPressure", name: "Blood Pressure", category: .vitals,
-               systemImage: "heart.text.square", kind: .bloodPressure),
+               systemImage: "heart.text.square", kind: .bloodPressure, keywords: ["BP", "Systolic", "Diastolic"]),
         Metric(id: "bloodGlucose", name: "Blood Glucose", category: .vitals, systemImage: "drop",
                kind: .quantity(.bloodGlucose, [
                    UnitOption(unit: .gramUnit(with: .milli).unitDivided(by: .literUnit(with: .deci)),
@@ -208,7 +221,7 @@ extension Metric {
                    UnitOption(unit: .moleUnit(with: .milli, molarMass: HKUnitMolarMassBloodGlucose).unitDivided(by: .liter()),
                               label: "mmol/L", system: .metric, range: 1.1...33.3, step: 0.1, defaultValue: 5.5,
                               fractionDigits: 1),
-               ])),
+               ]), keywords: ["Blood Sugar"]),
         Metric(id: "bodyTemperature", name: "Body Temperature", category: .vitals, systemImage: "thermometer.medium",
                kind: .quantity(.bodyTemperature, [
                    UnitOption(unit: .degreeCelsius(), label: "°C", system: .metric,
@@ -222,7 +235,7 @@ extension Metric {
 
     private static let body: [Metric] = [
         Metric(id: "bodyMass", name: "Weight", category: .body, systemImage: "scalemass",
-               kind: .quantity(.bodyMass, massOptions(defaultKg: 70))),
+               kind: .quantity(.bodyMass, massOptions(defaultKg: 70)), keywords: ["Body Mass"]),
         Metric(id: "bodyFatPercentage", name: "Body Fat", category: .body, systemImage: "percent",
                kind: .quantity(.bodyFatPercentage, [
                    UnitOption(unit: .percent(), label: "%", system: .both,
@@ -257,26 +270,26 @@ extension Metric {
                               range: 10...5000, step: 50, defaultValue: 250, presets: [250, 500]),
                    UnitOption(unit: .fluidOunceUS(), label: "fl oz", system: .us,
                               range: 1...170, step: 1, defaultValue: 8, presets: [8, 16]),
-               ]), dailyGoal: .target(2000)),
+               ]), dailyGoal: .target(2000), keywords: ["Hydration", "Drink"]),
         Metric(id: "dietaryCaffeine", name: "Caffeine", category: .intake, systemImage: "cup.and.saucer",
                kind: .quantity(.dietaryCaffeine, [
                    UnitOption(unit: .gramUnit(with: .milli), label: "mg", system: .both,
                               range: 1...1000, step: 5, defaultValue: 95, presets: [64, 95]),
-               ]), dailyGoal: .limit(400)),
+               ]), dailyGoal: .limit(400), keywords: ["Coffee", "Tea", "Energy Drink"]),
         Metric(id: "alcoholicBeverages", name: "Alcoholic Drinks", category: .intake, systemImage: "wineglass",
                kind: .quantity(.numberOfAlcoholicBeverages, [
                    UnitOption(unit: .count(), label: "drinks", system: .both,
                               range: 1...20, step: 1, defaultValue: 1, presets: [1], singularLabel: "drink"),
-               ])),
+               ]), keywords: ["Alcohol", "Beer", "Wine", "Liquor"]),
         Metric(id: "dietaryEnergyConsumed", name: "Calories", category: .intake, systemImage: "flame",
                kind: .quantity(.dietaryEnergyConsumed, [
                    UnitOption(unit: .kilocalorie(), label: "kcal", system: .both,
                               range: 1...5000, step: 10, defaultValue: 500),
-               ]), onWatch: false, dailyGoal: .target(2000)),
+               ]), onWatch: false, dailyGoal: .target(2000), keywords: ["Energy", "kcal"]),
         grams(.dietaryProtein, id: "dietaryProtein", name: "Protein", image: "fish", defaultValue: 25,
               goal: .target(50)),
         grams(.dietaryCarbohydrates, id: "dietaryCarbohydrates", name: "Carbohydrates", image: "carrot", defaultValue: 40,
-              goal: .target(275)),
+              goal: .target(275), keywords: ["Carbs"]),
         grams(.dietaryFatTotal, id: "dietaryFatTotal", name: "Total Fat", image: "drop.halffull", defaultValue: 15,
               goal: .limit(78)),
         grams(.dietarySugar, id: "dietarySugar", name: "Sugar", image: "cube", defaultValue: 10, goal: .limit(50)),
@@ -284,12 +297,12 @@ extension Metric {
     ]
 
     private static func grams(_ id: HKQuantityTypeIdentifier, id key: String, name: String,
-                              image: String, defaultValue: Double, goal: DailyGoal) -> Metric {
+                              image: String, defaultValue: Double, goal: DailyGoal, keywords: [String] = []) -> Metric {
         Metric(id: key, name: name, category: .intake, systemImage: image,
                kind: .quantity(id, [
                    UnitOption(unit: .gram(), label: "g", system: .both,
                               range: 0.1...1000, step: 1, defaultValue: defaultValue, fractionDigits: 1),
-               ]), onWatch: false, dailyGoal: goal)
+               ]), onWatch: false, dailyGoal: goal, keywords: keywords)
     }
 
     // MARK: Symptoms & events
@@ -299,7 +312,7 @@ extension Metric {
                kind: .quantity(.inhalerUsage, [
                    UnitOption(unit: .count(), label: "puffs", system: .both,
                               range: 1...10, step: 1, defaultValue: 1, presets: [1], singularLabel: "puff"),
-               ])),
+               ]), keywords: ["Asthma", "Puffs"]),
     ] + [
         (HKCategoryTypeIdentifier.headache, "Headache", "brain.head.profile"),
         (.nausea, "Nausea", "face.dashed"),
