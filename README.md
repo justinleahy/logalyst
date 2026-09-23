@@ -49,6 +49,8 @@ An iPhone + Apple Watch app for manually logging health data that Apple Watch do
 - **Complications** on Apple Watch: the Metric widget, showing a metric's latest reading or today's total.
   Tapping it opens that metric's entry screen. For water and caffeine it shows a ring toward your daily goal.
   Goals are set on the iPhone and reach the Watch the next time the Watch app opens.
+- **Controls** on Apple Watch (watchOS 26 and later): *Log Water* logs a glass of water in your unit without
+  opening the app, and *Log Metric* opens the entry screen for the metric you pick. Add them to Control Center.
 - Widgets read Health directly. While the phone is locked, Health can't be read, so they show the last values
   they read (daily totals reset at midnight). Logging from a widget asks you to unlock first.
 - Every sample is tagged `HKMetadataKeyWasUserEntered`, so Health shows it as manually entered.
@@ -77,10 +79,11 @@ identifier and unit options (plus an optional `dailyGoal` for intake metrics), a
 ```
 HealthLogger/        iPhone app (Log, Entry, Nutrition, History, Options screens)
 HealthLoggerWatch/   Watch app (Favorites, Digital Crown entry)
-HealthLoggerWidgets/ iPhone widget extension (Water, Nutrition, Quick Log, Log Water and Log Metric controls)
+HealthLoggerWidgets/ iPhone widget extension (Water, Nutrition, Quick Log)
 HealthLoggerWatchWidgets/  Watch widget extension (complications)
 AppShortcuts/        Siri phrases, compiled into the iPhone and Watch apps
-Widgets/             Metric widget and widget helpers, compiled into both widget extensions
+Widgets/             Metric widget, Log Water and Log Metric controls, and widget helpers, compiled into both
+                     widget extensions
 Shared/              Metric catalog, HealthStore (HealthKit read/write), NutritionGoals, DeviceSync
                      (favorites and goals, Watch ↔ iPhone), app group settings, and the logging intents Siri, Shortcuts and
                      widget buttons run, compiled into every target
