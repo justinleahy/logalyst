@@ -2,57 +2,43 @@ import SwiftUI
 
 struct WatchLogView: View {
     @Environment(HealthStore.self) private var health
-    @State private var confirmation: String?
+    @State private var path: [Metric] = []
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             List {
-                Section("Quick Add") {
-                    ForEach(Metric.quickAdd) { metric in
-                        if let option = health.unitOption(for: metric), let amount = option.presets.first {
-                            Button {
-                                quickAdd(metric, amount: amount, option: option)
-                            } label: {
-                                Label("\(metric.name) +\(option.format(amount))", systemImage: metric.systemImage)
-                            }
-                        }
+                let favorites = health.favorites.filter(\.onWatch)
+                if !favorites.isEmpty {
+                    Section("Favorites") {
+                        ForEach(favorites) { row(for: $0) }
                     }
                 }
                 ForEach(MetricCategory.allCases) { category in
                     Section(category.title) {
-                        ForEach(Metric.metrics(in: category, watchOnly: true)) { metric in
-                            NavigationLink(value: metric) {
-                                Label(metric.name, systemImage: metric.systemImage)
-                            }
-                        }
+                        ForEach(Metric.metrics(in: category, watchOnly: true)) { row(for: $0) }
                     }
                 }
             }
             .navigationTitle("Log")
-            .navigationDestination(for: Metric.self) { WatchEntryView(metric: $0) }
-            .overlay(alignment: .bottom) {
-                if let confirmation {
-                    Label(confirmation, systemImage: "checkmark.circle.fill")
-                        .font(.footnote)
-                        .padding(8)
-                        .background(.green.opacity(0.85), in: Capsule())
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
-            }
+            // A complication link can swap the open metric; the id gives the new one fresh state.
+            .navigationDestination(for: Metric.self) { WatchEntryView(metric: $0).id($0) }
+        }
+        // Complications link straight to a metric's entry screen.
+        .onOpenURL { url in
+            if case .log(let metric) = DeepLink(url: url) { path = [metric] }
         }
     }
 
-    private func quickAdd(_ metric: Metric, amount: Double, option: UnitOption) {
-        Task {
-            do {
-                try await health.saveQuantity(metric, value: amount, option: option, date: .now)
-                WKHaptic.success()
-                withAnimation { confirmation = "Logged \(option.format(amount))" }
-                try? await Task.sleep(for: .seconds(1.5))
-                withAnimation { confirmation = nil }
-            } catch {
-                WKHaptic.failure()
+    private func row(for metric: Metric) -> some View {
+        let isFavorite = health.isFavorite(metric)
+        return NavigationLink(value: metric) {
+            Label(metric.name, systemImage: metric.systemImage)
+        }
+        .swipeActions(edge: .leading) {
+            Button(isFavorite ? "Unfavorite" : "Favorite", systemImage: isFavorite ? "star.slash" : "star") {
+                health.toggleFavorite(metric)
             }
+            .tint(.yellow)
         }
     }
 }

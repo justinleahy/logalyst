@@ -154,7 +154,7 @@ struct EntryView: View {
             option
         } set: { newOption in
             if let old = option, let new = newOption, let current = value {
-                let converted = new.displayValue(from: old.quantity(fromDisplay: current))
+                let converted = new.displayValue(current, from: old)
                 value = (converted / new.step).rounded() * new.step
             }
             option = newOption

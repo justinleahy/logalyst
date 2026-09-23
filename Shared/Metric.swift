@@ -50,10 +50,43 @@ struct UnitOption: Hashable {
         HKQuantity(unit: unit, doubleValue: value / scale)
     }
 
+    /// Converts a value entered in another unit option of the same metric into this one.
+    func displayValue(_ value: Double, from other: UnitOption) -> Double {
+        displayValue(from: other.quantity(fromDisplay: value))
+    }
+
+    /// The number alone, without the unit label.
+    func formatNumber(_ value: Double) -> String {
+        value.formatted(.number.precision(.fractionLength(0...fractionDigits)))
+    }
+
     func format(_ value: Double) -> String {
-        let number = value.formatted(.number.precision(.fractionLength(0...fractionDigits)))
+        let number = formatNumber(value)
         if label == "%" { return "\(number)%" }
-        return "\(number) \(value == 1 ? singularLabel ?? label : label)"
+        return "\(number) \(label(for: value))"
+    }
+
+    /// The unit label, singular when the value is exactly 1.
+    func label(for value: Double) -> String {
+        value == 1 ? singularLabel ?? label : label
+    }
+}
+
+/// A default daily amount for an intake metric, in the metric's first unit option.
+enum DailyGoal: Hashable {
+    /// An amount to reach, e.g. water or protein.
+    case target(Double)
+    /// An amount to stay under, e.g. sugar or caffeine.
+    case limit(Double)
+
+    var defaultAmount: Double {
+        switch self {
+        case .target(let amount), .limit(let amount): amount
+        }
+    }
+
+    var isLimit: Bool {
+        if case .limit = self { true } else { false }
     }
 }
 
@@ -71,6 +104,8 @@ struct Metric: Identifiable, Hashable {
     let kind: MetricKind
     /// Whether the metric is offered on Apple Watch (long-tail items stay phone-only).
     var onWatch = true
+    /// Daily goal shown on the Nutrition screen.
+    var dailyGoal: DailyGoal?
 
     static func == (lhs: Metric, rhs: Metric) -> Bool { lhs.id == rhs.id }
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
@@ -155,10 +190,11 @@ extension Metric {
         all.filter { $0.category == category && (!watchOnly || $0.onWatch) }
     }
 
-    /// Metrics with one-tap preset amounts, shown in the Quick Add section.
-    static var quickAdd: [Metric] {
-        all.filter { $0.unitOptions.contains { !$0.presets.isEmpty } }
+    static func metric(id: String) -> Metric? {
+        all.first { $0.id == id }
     }
+
+    static let water = metric(id: "dietaryWater")!
 
     // MARK: Vitals
 
@@ -221,12 +257,12 @@ extension Metric {
                               range: 10...5000, step: 50, defaultValue: 250, presets: [250, 500]),
                    UnitOption(unit: .fluidOunceUS(), label: "fl oz", system: .us,
                               range: 1...170, step: 1, defaultValue: 8, presets: [8, 16]),
-               ])),
+               ]), dailyGoal: .target(2000)),
         Metric(id: "dietaryCaffeine", name: "Caffeine", category: .intake, systemImage: "cup.and.saucer",
                kind: .quantity(.dietaryCaffeine, [
                    UnitOption(unit: .gramUnit(with: .milli), label: "mg", system: .both,
                               range: 1...1000, step: 5, defaultValue: 95, presets: [64, 95]),
-               ])),
+               ]), dailyGoal: .limit(400)),
         Metric(id: "alcoholicBeverages", name: "Alcoholic Drinks", category: .intake, systemImage: "wineglass",
                kind: .quantity(.numberOfAlcoholicBeverages, [
                    UnitOption(unit: .count(), label: "drinks", system: .both,
@@ -236,21 +272,24 @@ extension Metric {
                kind: .quantity(.dietaryEnergyConsumed, [
                    UnitOption(unit: .kilocalorie(), label: "kcal", system: .both,
                               range: 1...5000, step: 10, defaultValue: 500),
-               ]), onWatch: false),
-        grams(.dietaryProtein, id: "dietaryProtein", name: "Protein", image: "fish", defaultValue: 25),
-        grams(.dietaryCarbohydrates, id: "dietaryCarbohydrates", name: "Carbohydrates", image: "carrot", defaultValue: 40),
-        grams(.dietaryFatTotal, id: "dietaryFatTotal", name: "Total Fat", image: "drop.halffull", defaultValue: 15),
-        grams(.dietarySugar, id: "dietarySugar", name: "Sugar", image: "cube", defaultValue: 10),
-        grams(.dietaryFiber, id: "dietaryFiber", name: "Fiber", image: "leaf", defaultValue: 5),
+               ]), onWatch: false, dailyGoal: .target(2000)),
+        grams(.dietaryProtein, id: "dietaryProtein", name: "Protein", image: "fish", defaultValue: 25,
+              goal: .target(50)),
+        grams(.dietaryCarbohydrates, id: "dietaryCarbohydrates", name: "Carbohydrates", image: "carrot", defaultValue: 40,
+              goal: .target(275)),
+        grams(.dietaryFatTotal, id: "dietaryFatTotal", name: "Total Fat", image: "drop.halffull", defaultValue: 15,
+              goal: .limit(78)),
+        grams(.dietarySugar, id: "dietarySugar", name: "Sugar", image: "cube", defaultValue: 10, goal: .limit(50)),
+        grams(.dietaryFiber, id: "dietaryFiber", name: "Fiber", image: "leaf", defaultValue: 5, goal: .target(28)),
     ]
 
     private static func grams(_ id: HKQuantityTypeIdentifier, id key: String, name: String,
-                              image: String, defaultValue: Double) -> Metric {
+                              image: String, defaultValue: Double, goal: DailyGoal) -> Metric {
         Metric(id: key, name: name, category: .intake, systemImage: image,
                kind: .quantity(id, [
                    UnitOption(unit: .gram(), label: "g", system: .both,
                               range: 0.1...1000, step: 1, defaultValue: defaultValue, fractionDigits: 1),
-               ]), onWatch: false)
+               ]), onWatch: false, dailyGoal: goal)
     }
 
     // MARK: Symptoms & events

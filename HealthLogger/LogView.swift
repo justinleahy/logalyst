@@ -1,63 +1,65 @@
 import SwiftUI
 
 struct LogView: View {
+    @Binding var path: [Metric]
+    @Environment(HealthStore.self) private var health
+
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             List {
-                Section("Quick Add") {
-                    ForEach(Metric.quickAdd) { QuickAddRow(metric: $0) }
+                Section {
+                    ForEach(health.favorites) { row(for: $0) }
+                } header: {
+                    Label("Favorites", systemImage: "star")
+                } footer: {
+                    if health.favorites.isEmpty {
+                        Text("Swipe right on a metric, or touch and hold it, to add it to Favorites.")
+                    }
                 }
                 ForEach(MetricCategory.allCases) { category in
                     Section {
-                        ForEach(Metric.metrics(in: category)) { metric in
-                            NavigationLink(value: metric) {
-                                Label(metric.name, systemImage: metric.systemImage)
-                            }
-                        }
+                        ForEach(Metric.metrics(in: category)) { row(for: $0) }
                     } header: {
                         Label(category.title, systemImage: category.systemImage)
                     }
                 }
             }
             .navigationTitle("Log Health Data")
-            .navigationDestination(for: Metric.self) { EntryView(metric: $0) }
+            // A widget link can swap the open metric; the id gives the new one fresh state.
+            .navigationDestination(for: Metric.self) { EntryView(metric: $0).id($0) }
         }
+    }
+
+    private func row(for metric: Metric) -> some View {
+        NavigationLink(value: metric) {
+            Label(metric.name, systemImage: metric.systemImage)
+        }
+        .favoriteActions(for: metric)
     }
 }
 
-/// One-tap preset buttons, e.g. "+8 fl oz" of water.
-private struct QuickAddRow: View {
+extension View {
+    /// Swipe and context menu actions to star or unstar a metric.
+    func favoriteActions(for metric: Metric) -> some View {
+        modifier(FavoriteActions(metric: metric))
+    }
+}
+
+private struct FavoriteActions: ViewModifier {
     let metric: Metric
     @Environment(HealthStore.self) private var health
-    @State private var savedCount = 0
-    @State private var error: String?
 
-    var body: some View {
-        if let option = health.unitOption(for: metric) {
-            HStack {
-                Label(metric.name, systemImage: metric.systemImage)
-                Spacer()
-                ForEach(option.presets, id: \.self) { amount in
-                    Button("+\(option.format(amount))") {
-                        Task {
-                            do {
-                                try await health.saveQuantity(metric, value: amount, option: option, date: .now)
-                                savedCount += 1
-                            } catch {
-                                self.error = error.localizedDescription
-                            }
-                        }
-                    }
-                    .buttonStyle(.bordered)
-                    .font(.callout)
-                }
+    func body(content: Content) -> some View {
+        let isFavorite = health.isFavorite(metric)
+        let title = isFavorite ? "Unfavorite" : "Favorite"
+        let image = isFavorite ? "star.slash" : "star"
+        content
+            .swipeActions(edge: .leading) {
+                Button(title, systemImage: image) { health.toggleFavorite(metric) }
+                    .tint(.yellow)
             }
-            .sensoryFeedback(.success, trigger: savedCount)
-            .alert("Couldn't Save", isPresented: .constant(error != nil)) {
-                Button("OK") { error = nil }
-            } message: {
-                Text(error ?? "")
+            .contextMenu {
+                Button(title, systemImage: image) { health.toggleFavorite(metric) }
             }
-        }
     }
 }

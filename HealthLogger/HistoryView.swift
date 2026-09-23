@@ -13,7 +13,7 @@ struct HistoryView: View {
                     Section(group.day.formatted(date: .complete, time: .omitted)) {
                         ForEach(group.entries) { entry in
                             HStack {
-                                Label(entry.metric.name, systemImage: entry.metric.systemImage)
+                                Label(entry.title, systemImage: entry.systemImage)
                                 Spacer()
                                 VStack(alignment: .trailing) {
                                     Text(entry.valueText).monospacedDigit()

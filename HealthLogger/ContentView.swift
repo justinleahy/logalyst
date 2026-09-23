@@ -3,14 +3,21 @@ import SwiftUI
 struct ContentView: View {
     @Environment(HealthStore.self) private var health
     @State private var authError: String?
+    @State private var tab = AppTab.log
+    @State private var logPath: [Metric] = []
+
+    private enum AppTab { case log, nutrition, history, options }
 
     var body: some View {
         Group {
             if health.isAvailable {
-                TabView {
-                    Tab("Log", systemImage: "plus.circle") { LogView() }
-                    Tab("History", systemImage: "clock") { HistoryView() }
+                TabView(selection: $tab) {
+                    Tab("Log", systemImage: "plus.circle", value: .log) { LogView(path: $logPath) }
+                    Tab("Nutrition", systemImage: "fork.knife", value: .nutrition) { NutritionView() }
+                    Tab("History", systemImage: "clock", value: .history) { HistoryView() }
+                    Tab("Options", systemImage: "gearshape", value: .options) { OptionsView() }
                 }
+                .onOpenURL(perform: open)
             } else {
                 ContentUnavailableView("Health Unavailable", systemImage: "heart.slash",
                                        description: Text("Health data isn't available on this device."))
@@ -24,6 +31,19 @@ struct ContentView: View {
             Button("OK") { authError = nil }
         } message: {
             Text(authError ?? "")
+        }
+    }
+
+    /// Handles links from widgets.
+    private func open(_ url: URL) {
+        switch DeepLink(url: url) {
+        case .log(let metric):
+            tab = .log
+            logPath = [metric]
+        case .nutrition:
+            tab = .nutrition
+        case nil:
+            break
         }
     }
 }
