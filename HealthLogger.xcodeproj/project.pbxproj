@@ -75,15 +75,15 @@
 /* Begin PBXFileReference section */
 		0A0000000000000000000020 /* HealthLogger.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HealthLogger.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		0A0000000000000000000021 /* HealthLoggerWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HealthLoggerWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		0A0000000000000000000080 /* HealthLogger.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HealthLogger.entitlements; sourceTree = "<group>"; };
-		0A0000000000000000000081 /* HealthLoggerWatch.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HealthLoggerWatch.entitlements; sourceTree = "<group>"; };
 		0A0000000000000000000022 /* HealthLoggerWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = HealthLoggerWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		0A0000000000000000000023 /* HealthLoggerWatchWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = HealthLoggerWatchWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		0A0000000000000000000080 /* HealthLogger.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HealthLogger.entitlements; sourceTree = "<group>"; };
+		0A0000000000000000000081 /* HealthLoggerWatch.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HealthLoggerWatch.entitlements; sourceTree = "<group>"; };
 		0A0000000000000000000082 /* HealthLoggerWidgets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HealthLoggerWidgets.entitlements; sourceTree = "<group>"; };
 		0A0000000000000000000083 /* HealthLoggerWatchWidgets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HealthLoggerWatchWidgets.entitlements; sourceTree = "<group>"; };
 		0A0000000000000000000084 /* HealthLoggerWidgets-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "HealthLoggerWidgets-Info.plist"; sourceTree = "<group>"; };
-		0A0000000000000000000086 /* HealthLogger-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "HealthLogger-Info.plist"; sourceTree = "<group>"; };
 		0A0000000000000000000085 /* HealthLoggerWatchWidgets-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "HealthLoggerWatchWidgets-Info.plist"; sourceTree = "<group>"; };
+		0A0000000000000000000086 /* HealthLogger-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "HealthLogger-Info.plist"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -210,8 +210,8 @@
 				0A00000000000000000000A8 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				0A0000000000000000000011 /* HealthLogger */,
 				0A0000000000000000000010 /* Shared */,
+				0A0000000000000000000011 /* HealthLogger */,
 			);
 			name = HealthLogger;
 			packageProductDependencies = (
@@ -235,8 +235,8 @@
 				0A00000000000000000000A9 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				0A0000000000000000000012 /* HealthLoggerWatch */,
 				0A0000000000000000000010 /* Shared */,
+				0A0000000000000000000012 /* HealthLoggerWatch */,
 			);
 			name = HealthLoggerWatch;
 			packageProductDependencies = (
@@ -258,9 +258,9 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				0A0000000000000000000014 /* HealthLoggerWidgets */,
-				0A0000000000000000000013 /* Widgets */,
 				0A0000000000000000000010 /* Shared */,
+				0A0000000000000000000013 /* Widgets */,
+				0A0000000000000000000014 /* HealthLoggerWidgets */,
 			);
 			name = HealthLoggerWidgets;
 			packageProductDependencies = (
@@ -282,9 +282,9 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				0A0000000000000000000015 /* HealthLoggerWatchWidgets */,
-				0A0000000000000000000013 /* Widgets */,
 				0A0000000000000000000010 /* Shared */,
+				0A0000000000000000000013 /* Widgets */,
+				0A0000000000000000000015 /* HealthLoggerWatchWidgets */,
 			);
 			name = HealthLoggerWatchWidgets;
 			packageProductDependencies = (
@@ -430,7 +430,7 @@
 				CLANG_ENABLE_OBJC_ARC = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = WF2RUADVPE;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -465,7 +465,7 @@
 				CLANG_ENABLE_OBJC_ARC = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = WF2RUADVPE;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
