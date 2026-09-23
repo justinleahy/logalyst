@@ -1,6 +1,7 @@
 import AppIntents
 
 /// Siri phrases, plus the tiles Shortcuts and Spotlight show for the app. Every phrase must name the app.
+/// Compiled into the iPhone and Watch apps, but not the widget extensions.
 struct HealthLoggerShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(intent: LogWaterIntent(), phrases: [

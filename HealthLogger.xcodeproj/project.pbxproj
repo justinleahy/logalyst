@@ -117,6 +117,11 @@
 			path = HealthLoggerWatchWidgets;
 			sourceTree = "<group>";
 		};
+		0A0000000000000000000016 /* AppShortcuts */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = AppShortcuts;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -157,6 +162,7 @@
 				0A0000000000000000000011 /* HealthLogger */,
 				0A0000000000000000000012 /* HealthLoggerWatch */,
 				0A0000000000000000000010 /* Shared */,
+				0A0000000000000000000016 /* AppShortcuts */,
 				0A0000000000000000000013 /* Widgets */,
 				0A0000000000000000000014 /* HealthLoggerWidgets */,
 				0A0000000000000000000015 /* HealthLoggerWatchWidgets */,
@@ -211,6 +217,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				0A0000000000000000000010 /* Shared */,
+				0A0000000000000000000016 /* AppShortcuts */,
 				0A0000000000000000000011 /* HealthLogger */,
 			);
 			name = HealthLogger;
@@ -236,6 +243,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				0A0000000000000000000010 /* Shared */,
+				0A0000000000000000000016 /* AppShortcuts */,
 				0A0000000000000000000012 /* HealthLoggerWatch */,
 			);
 			name = HealthLoggerWatch;
