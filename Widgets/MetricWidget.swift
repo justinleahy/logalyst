@@ -95,12 +95,10 @@ struct MetricProvider: AppIntentTimelineProvider {
         let total = await health.todayTotal(of: metric, in: option)
         var entry = MetricEntry(metric: metric,
                                 reading: MetricReading(value: option.formatNumber(total), text: option.format(total)))
-        #if os(iOS)
-        // Goals are set on iPhone, so the watch shows totals without progress.
+        // On the Watch these are the goals the iPhone last sent, or the defaults until it has.
         if let goal = NutritionGoals().goal(for: metric, in: option), goal > 0 {
             entry.progress = total / goal
         }
-        #endif
         return entry
     }
 

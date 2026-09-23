@@ -47,8 +47,8 @@ An iPhone + Apple Watch app for manually logging health data that Apple Watch do
 - The app handles `healthlogger://log/<metric ID>` and `healthlogger://nutrition` links, which the widgets and
   controls use.
 - **Complications** on Apple Watch: the Metric widget, showing a metric's latest reading or today's total.
-  Tapping it opens that metric's entry screen. Goals are set on the iPhone, so the Watch shows totals without
-  progress.
+  Tapping it opens that metric's entry screen. For water and caffeine it shows a ring toward your daily goal.
+  Goals are set on the iPhone and reach the Watch the next time the Watch app opens.
 - Widgets read Health directly. While the phone is locked, Health can't be read, so they show the last values
   they read (daily totals reset at midnight). Logging from a widget asks you to unlock first.
 - Every sample is tagged `HKMetadataKeyWasUserEntered`, so Health shows it as manually entered.
@@ -82,7 +82,7 @@ HealthLoggerWatchWidgets/  Watch widget extension (complications)
 AppShortcuts/        Siri phrases, compiled into the iPhone and Watch apps
 Widgets/             Metric widget and widget helpers, compiled into both widget extensions
 Shared/              Metric catalog, HealthStore (HealthKit read/write), NutritionGoals, DeviceSync
-                     (Watch ↔ iPhone), app group settings, and the logging intents Siri, Shortcuts and
+                     (favorites and goals, Watch ↔ iPhone), app group settings, and the logging intents Siri, Shortcuts and
                      widget buttons run, compiled into every target
 Config/              Entitlements and the widget extensions' Info.plists
 ```

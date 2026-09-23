@@ -139,16 +139,16 @@ final class HealthStore {
     private var favoritesUpdated = AppGroup.defaults.object(forKey: favoritesUpdatedKey) as? Date
     private var sync: DeviceSync?
 
-    /// Widgets pass false: they only read favorites, and syncing is the app's job.
-    init(syncsFavorites: Bool = true) {
-        guard syncsFavorites else { return }
-        sync = DeviceSync { [weak self] remote in self?.reconcileFavorites(with: remote) }
+    /// Widgets pass false: they only read favorites and goals, and syncing is the app's job.
+    init(syncs: Bool = true) {
+        guard syncs else { return }
+        sync = DeviceSync { [weak self] remote in self?.reconcile(with: remote) }
         sync?.activate()
     }
 
     /// A HealthStore for widgets and intents, which run outside the app's screens, with units loaded.
     static func standalone() async -> HealthStore {
-        let health = HealthStore(syncsFavorites: false)
+        let health = HealthStore(syncs: false)
         await health.loadPreferredUnits()
         return health
     }
@@ -179,6 +179,15 @@ final class HealthStore {
         WidgetCenter.shared.reloadAllTimelines()
     }
 
+    private func reconcile(with remote: RemoteState) {
+        reconcileFavorites(with: remote.favorites)
+        #if os(watchOS)
+        if let goals = remote.goals { NutritionGoals.receive(goals) }
+        #else
+        sendGoals()
+        #endif
+    }
+
     /// Takes the other device's favorites if they're newer, otherwise sends ours so it catches up.
     private func reconcileFavorites(with remote: FavoritesState?) {
         if let remote, remote.updated > favoritesUpdated ?? .distantPast {
@@ -187,6 +196,14 @@ final class HealthStore {
         } else if let local = favoritesState, local.updated != remote?.updated {
             sync?.send(local)
         }
+    }
+
+    // MARK: Goals
+
+    /// Offers the Watch the goals set on this iPhone, so its complications can show progress toward them.
+    /// Does nothing if the Watch already has them.
+    func sendGoals() {
+        sync?.send(goals: NutritionGoals.saved)
     }
 
     // MARK: Saving

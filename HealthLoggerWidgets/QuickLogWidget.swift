@@ -40,7 +40,7 @@ struct QuickLogProvider: TimelineProvider {
     }
 
     private func entry() async -> QuickLogEntry {
-        let favorites = HealthStore(syncsFavorites: false).favorites
+        let favorites = HealthStore(syncs: false).favorites
         return QuickLogEntry(metrics: favorites.isEmpty ? Self.suggested : favorites)
     }
 }
