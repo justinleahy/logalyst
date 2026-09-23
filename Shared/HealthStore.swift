@@ -201,6 +201,14 @@ final class HealthStore {
         try await save([sample])
     }
 
+    /// Saves an event that ended at `end` and lasted `duration` seconds.
+    func saveTimedEvent(_ metric: Metric, duration: TimeInterval, end: Date) async throws {
+        guard case .timedEvent(let id) = metric.kind else { return }
+        let sample = HKCategorySample(type: HKCategoryType(id), value: HKCategoryValue.notApplicable.rawValue,
+                                      start: end.addingTimeInterval(-duration), end: end, metadata: baseMetadata)
+        try await save([sample])
+    }
+
     private var baseMetadata: [String: Any] {
         [HKMetadataKeyWasUserEntered: true, Self.entryMetadataKey: true]
     }
@@ -317,7 +325,7 @@ final class HealthStore {
             guard let values = bloodPressureValues(correlation) else { return nil }
             text = "\(Int(values.systolic))/\(Int(values.diastolic)) mmHg"
         case let category as HKCategorySample:
-            text = Severity(healthKitValue: category.value)?.title ?? "Logged"
+            text = metric.summary(of: category)
         default:
             return nil
         }

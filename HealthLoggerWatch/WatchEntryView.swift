@@ -22,6 +22,12 @@ struct WatchEntryView: View {
                         save { try await health.saveSymptom(metric, severity: severity, start: .now, end: .now) }
                     }
                 }
+            case .timedEvent:
+                List(TimedEvent.presets, id: \.self) { duration in
+                    Button(TimedEvent.format(duration, width: .wide)) {
+                        save { try await health.saveTimedEvent(metric, duration: duration, end: .now) }
+                    }
+                }
             }
         }
         .navigationTitle(metric.name)

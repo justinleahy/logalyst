@@ -15,6 +15,7 @@ struct EntryView: View {
     @State private var systolic: Double?
     @State private var diastolic: Double?
     @State private var severity = Severity.mild
+    @State private var duration = TimedEvent.defaultDuration
     @State private var mealTime = BloodGlucoseMealTime.unspecified
     @State private var error: String?
     @State private var saved = false
@@ -31,10 +32,12 @@ struct EntryView: View {
                 bloodPressureSection
             case .symptom:
                 symptomSection
+            case .timedEvent:
+                durationSection
             }
 
             Section {
-                DatePicker(isSymptom && hasDuration ? "Started" : "Date & Time", selection: $date,
+                DatePicker(dateLabel, selection: $date,
                            in: ...Date.now)
                 if isSymptom {
                     Toggle("Has Duration", isOn: $hasDuration)
@@ -142,7 +145,30 @@ struct EntryView: View {
         }
     }
 
+    private var durationSection: some View {
+        Section("Duration") {
+            Stepper(value: $duration, in: TimedEvent.range, step: TimedEvent.step) {
+                Text(TimedEvent.format(duration, width: .wide))
+                    .font(.title3.monospacedDigit())
+            }
+            HStack {
+                ForEach(TimedEvent.presets, id: \.self) { preset in
+                    Button(TimedEvent.format(preset)) { duration = preset }
+                        .buttonStyle(.bordered)
+                }
+            }
+        }
+    }
+
     // MARK: Logic
+
+    private var dateLabel: String {
+        switch metric.kind {
+        case .symptom where hasDuration: "Started"
+        case .timedEvent: "Finished"
+        default: "Date & Time"
+        }
+    }
 
     private var isSymptom: Bool {
         if case .symptom = metric.kind { true } else { false }
@@ -171,7 +197,7 @@ struct EntryView: View {
             return BloodPressure.systolicRange.contains(systolic)
                 && BloodPressure.diastolicRange.contains(diastolic)
                 && systolic > diastolic
-        case .symptom:
+        case .symptom, .timedEvent:
             return true
         }
     }
@@ -192,7 +218,7 @@ struct EntryView: View {
                 diastolic = last.diastolic
             }
             focusedField = .systolic
-        case .symptom:
+        case .symptom, .timedEvent:
             break
         }
     }
@@ -210,6 +236,8 @@ struct EntryView: View {
                 case .symptom:
                     try await health.saveSymptom(metric, severity: severity, start: date,
                                                  end: hasDuration ? endDate : date)
+                case .timedEvent:
+                    try await health.saveTimedEvent(metric, duration: duration, end: date)
                 }
                 saved.toggle()
                 dismiss()

@@ -94,6 +94,8 @@ enum MetricKind: Hashable {
     case quantity(HKQuantityTypeIdentifier, [UnitOption])
     case bloodPressure
     case symptom(HKCategoryTypeIdentifier)
+    /// An event with no value, only a duration (e.g. toothbrushing).
+    case timedEvent(HKCategoryTypeIdentifier)
 }
 
 struct Metric: Identifiable, Hashable {
@@ -126,7 +128,7 @@ struct Metric: Identifiable, Hashable {
         switch kind {
         case .quantity(let id, _): [HKQuantityType(id)]
         case .bloodPressure: [HKQuantityType(.bloodPressureSystolic), HKQuantityType(.bloodPressureDiastolic)]
-        case .symptom(let id): [HKCategoryType(id)]
+        case .symptom(let id), .timedEvent(let id): [HKCategoryType(id)]
         }
     }
 
@@ -135,8 +137,16 @@ struct Metric: Identifiable, Hashable {
         switch kind {
         case .quantity(let id, _): HKQuantityType(id)
         case .bloodPressure: HKCorrelationType(.bloodPressure)
-        case .symptom(let id): HKCategoryType(id)
+        case .symptom(let id), .timedEvent(let id): HKCategoryType(id)
         }
+    }
+
+    /// How a logged category sample reads, e.g. "Moderate" or "2 min".
+    func summary(of sample: HKCategorySample, width: Duration.UnitsFormatStyle.UnitWidth = .abbreviated) -> String {
+        if case .timedEvent = kind {
+            return TimedEvent.format(sample.endDate.timeIntervalSince(sample.startDate), width: width)
+        }
+        return Severity(healthKitValue: sample.value)?.title ?? "Logged"
     }
 }
 
@@ -148,6 +158,19 @@ enum BloodPressure {
     static let diastolicRange = 30.0...150.0
     static let defaultSystolic = 120.0
     static let defaultDiastolic = 80.0
+}
+
+// MARK: - Timed events
+
+enum TimedEvent {
+    static let range: ClosedRange<TimeInterval> = 15...600
+    static let step: TimeInterval = 15
+    static let defaultDuration: TimeInterval = 120
+    static let presets: [TimeInterval] = [60, 120, 180]
+
+    static func format(_ duration: TimeInterval, width: Duration.UnitsFormatStyle.UnitWidth = .abbreviated) -> String {
+        Duration.seconds(duration.rounded()).formatted(.units(allowed: [.minutes, .seconds], width: width))
+    }
 }
 
 // MARK: - Symptom severity
@@ -334,5 +357,9 @@ extension Metric {
         (.vomiting, "Vomiting", "exclamationmark.triangle"),
     ].map { id, name, image in
         Metric(id: id.rawValue, name: name, category: .symptoms, systemImage: image, kind: .symptom(id))
-    }
+    } + [
+        Metric(id: HKCategoryTypeIdentifier.toothbrushingEvent.rawValue, name: "Toothbrushing", category: .symptoms,
+               systemImage: "bubbles.and.sparkles", kind: .timedEvent(.toothbrushingEvent),
+               keywords: ["Brush Teeth", "Teeth", "Dental", "Oral Hygiene"]),
+    ]
 }

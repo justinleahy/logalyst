@@ -171,8 +171,8 @@ struct MetricProvider: AppIntentTimelineProvider {
             let value = "\(Int(values.systolic))/\(Int(values.diastolic))"
             return MetricReading(value: value, text: "\(value) mmHg", date: sample.startDate)
         case let category as HKCategorySample:
-            let title = Severity(healthKitValue: category.value)?.title ?? "Logged"
-            return MetricReading(value: title, text: title, date: sample.startDate)
+            return MetricReading(value: metric.summary(of: category, width: .narrow), text: metric.summary(of: category),
+                                 date: sample.startDate)
         default:
             return nil
         }
