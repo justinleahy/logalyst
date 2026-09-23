@@ -28,6 +28,12 @@ struct WatchEntryView: View {
                         save { try await health.saveTimedEvent(metric, duration: duration, end: .now) }
                     }
                 }
+            case .sexualActivity:
+                List(Protection.allCases) { protection in
+                    Button(protection == .unspecified ? "Log" : "Protection \(protection.title)") {
+                        save { try await health.saveSexualActivity(protection: protection, date: .now) }
+                    }
+                }
             }
         }
         .navigationTitle(metric.name)

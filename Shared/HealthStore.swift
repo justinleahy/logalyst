@@ -226,6 +226,16 @@ final class HealthStore {
         try await save([sample])
     }
 
+    func saveSexualActivity(protection: Protection, date: Date) async throws {
+        var metadata = baseMetadata
+        if let used = protection.healthKitValue {
+            metadata[HKMetadataKeySexualActivityProtectionUsed] = used
+        }
+        let sample = HKCategorySample(type: HKCategoryType(.sexualActivity), value: HKCategoryValue.notApplicable.rawValue,
+                                      start: date, end: date, metadata: metadata)
+        try await save([sample])
+    }
+
     private var baseMetadata: [String: Any] {
         [HKMetadataKeyWasUserEntered: true, Self.entryMetadataKey: true]
     }

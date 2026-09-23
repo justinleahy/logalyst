@@ -96,6 +96,8 @@ enum MetricKind: Hashable {
     case symptom(HKCategoryTypeIdentifier)
     /// An event with no value, only a duration (e.g. toothbrushing).
     case timedEvent(HKCategoryTypeIdentifier)
+    /// A moment in time with whether protection was used.
+    case sexualActivity
 }
 
 struct Metric: Identifiable, Hashable {
@@ -129,6 +131,7 @@ struct Metric: Identifiable, Hashable {
         case .quantity(let id, _): [HKQuantityType(id)]
         case .bloodPressure: [HKQuantityType(.bloodPressureSystolic), HKQuantityType(.bloodPressureDiastolic)]
         case .symptom(let id), .timedEvent(let id): [HKCategoryType(id)]
+        case .sexualActivity: [HKCategoryType(.sexualActivity)]
         }
     }
 
@@ -138,15 +141,20 @@ struct Metric: Identifiable, Hashable {
         case .quantity(let id, _): HKQuantityType(id)
         case .bloodPressure: HKCorrelationType(.bloodPressure)
         case .symptom(let id), .timedEvent(let id): HKCategoryType(id)
+        case .sexualActivity: HKCategoryType(.sexualActivity)
         }
     }
 
-    /// How a logged category sample reads, e.g. "Moderate" or "2 min".
+    /// How a logged category sample reads, e.g. "Moderate", "2 min" or "Protected".
     func summary(of sample: HKCategorySample, width: Duration.UnitsFormatStyle.UnitWidth = .abbreviated) -> String {
-        if case .timedEvent = kind {
-            return TimedEvent.format(sample.endDate.timeIntervalSince(sample.startDate), width: width)
+        switch kind {
+        case .timedEvent:
+            TimedEvent.format(sample.endDate.timeIntervalSince(sample.startDate), width: width)
+        case .sexualActivity:
+            Protection(metadata: sample.metadata).summary
+        default:
+            Severity(healthKitValue: sample.value)?.title ?? "Logged"
         }
-        return Severity(healthKitValue: sample.value)?.title ?? "Logged"
     }
 }
 
@@ -170,6 +178,49 @@ enum TimedEvent {
 
     static func format(_ duration: TimeInterval, width: Duration.UnitsFormatStyle.UnitWidth = .abbreviated) -> String {
         Duration.seconds(duration.rounded()).formatted(.units(allowed: [.minutes, .seconds], width: width))
+    }
+}
+
+// MARK: - Sexual activity
+
+enum Protection: CaseIterable, Identifiable {
+    case unspecified, used, notUsed
+
+    var id: Self { self }
+
+    /// Label in the entry picker.
+    var title: String {
+        switch self {
+        case .unspecified: "Not Set"
+        case .used: "Used"
+        case .notUsed: "Not Used"
+        }
+    }
+
+    /// How a logged entry reads in history and widgets.
+    var summary: String {
+        switch self {
+        case .unspecified: "Logged"
+        case .used: "Protected"
+        case .notUsed: "Unprotected"
+        }
+    }
+
+    /// Nil when unspecified, so the metadata key is left out rather than guessed.
+    var healthKitValue: Bool? {
+        switch self {
+        case .unspecified: nil
+        case .used: true
+        case .notUsed: false
+        }
+    }
+
+    init(metadata: [String: Any]?) {
+        switch metadata?[HKMetadataKeySexualActivityProtectionUsed] as? Bool {
+        case true?: self = .used
+        case false?: self = .notUsed
+        case nil: self = .unspecified
+        }
     }
 }
 
@@ -361,5 +412,7 @@ extension Metric {
         Metric(id: HKCategoryTypeIdentifier.toothbrushingEvent.rawValue, name: "Toothbrushing", category: .symptoms,
                systemImage: "bubbles.and.sparkles", kind: .timedEvent(.toothbrushingEvent),
                keywords: ["Brush Teeth", "Teeth", "Dental", "Oral Hygiene"]),
+        Metric(id: HKCategoryTypeIdentifier.sexualActivity.rawValue, name: "Sexual Activity", category: .symptoms,
+               systemImage: "heart", kind: .sexualActivity, keywords: ["Sex", "Intercourse", "Protection", "Condom"]),
     ]
 }

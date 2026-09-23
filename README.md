@@ -9,7 +9,7 @@ An iPhone + Apple Watch app for manually logging health data that Apple Watch do
 | Vitals | Blood pressure, blood glucose (with before/after meal), body temperature |
 | Body | Weight, body fat %, lean body mass, waist circumference |
 | Intake | Water, caffeine, alcoholic drinks, calories, protein, carbs, fat, sugar, fiber |
-| Symptoms & events | 18 symptoms with severity (and optional duration), inhaler use, toothbrushing (duration) |
+| Symptoms & events | 18 symptoms with severity (and optional duration), inhaler use, toothbrushing (duration), sexual activity (with protection used) |
 
 - **Favorites:** swipe right on a metric (or touch and hold it on iPhone) to star it and pin it to the top of the
   Log list. Favorites sync between iPhone and Watch; if both change at once, the latest edit wins.

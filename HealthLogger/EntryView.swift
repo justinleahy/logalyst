@@ -16,6 +16,7 @@ struct EntryView: View {
     @State private var diastolic: Double?
     @State private var severity = Severity.mild
     @State private var duration = TimedEvent.defaultDuration
+    @State private var protection = Protection.unspecified
     @State private var mealTime = BloodGlucoseMealTime.unspecified
     @State private var error: String?
     @State private var saved = false
@@ -34,6 +35,8 @@ struct EntryView: View {
                 symptomSection
             case .timedEvent:
                 durationSection
+            case .sexualActivity:
+                protectionSection
             }
 
             Section {
@@ -160,6 +163,16 @@ struct EntryView: View {
         }
     }
 
+    private var protectionSection: some View {
+        Section("Protection") {
+            Picker("Protection", selection: $protection) {
+                ForEach(Protection.allCases) { Text($0.title).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+        }
+    }
+
     // MARK: Logic
 
     private var dateLabel: String {
@@ -197,7 +210,7 @@ struct EntryView: View {
             return BloodPressure.systolicRange.contains(systolic)
                 && BloodPressure.diastolicRange.contains(diastolic)
                 && systolic > diastolic
-        case .symptom, .timedEvent:
+        case .symptom, .timedEvent, .sexualActivity:
             return true
         }
     }
@@ -218,7 +231,7 @@ struct EntryView: View {
                 diastolic = last.diastolic
             }
             focusedField = .systolic
-        case .symptom, .timedEvent:
+        case .symptom, .timedEvent, .sexualActivity:
             break
         }
     }
@@ -238,6 +251,8 @@ struct EntryView: View {
                                                  end: hasDuration ? endDate : date)
                 case .timedEvent:
                     try await health.saveTimedEvent(metric, duration: duration, end: date)
+                case .sexualActivity:
+                    try await health.saveSexualActivity(protection: protection, date: date)
                 }
                 saved.toggle()
                 dismiss()
