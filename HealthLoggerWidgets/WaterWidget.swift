@@ -42,7 +42,7 @@ struct WaterProvider: TimelineProvider {
 
     private func entry() async -> WaterEntry {
         let water = Metric.water
-        let health = await HealthStore.forWidget()
+        let health = await HealthStore.standalone()
         let option = health.unitOption(for: water) ?? water.unitOptions[0]
         return WaterEntry(option: option, total: await health.todayTotal(of: water, in: option),
                           goal: NutritionGoals().goal(for: water, in: option) ?? 0)

@@ -34,6 +34,16 @@ An iPhone + Apple Watch app for manually logging health data that Apple Watch do
   - *Metric*: pick any metric to see its latest reading, or today's total for intake.
   - *Log Water* and *Log Metric* controls for Control Center and the buttons at the bottom of the Lock Screen.
     Log Metric opens the entry screen for the metric you pick.
+- **Siri and Shortcuts** (iPhone):
+  - *Log Water*: "Log water in Health Logger" logs a glass in your unit. In Shortcuts you can set any amount
+    and unit.
+  - *Log Water Serving*: "Log 16 ounces of water in Health Logger" (or 8, 12, 20, 24 or 32 oz, 250, 330, 500 or
+    750 mL, or a liter) logs it in one sentence. Siri phrases can't hold any number, only choices from a list.
+  - *Log Metric*: "Log my weight in Health Logger" (or blood glucose, caffeine, or any other metric logged as a
+    number) asks for the value in your unit, then saves it. In Shortcuts you can set the value and unit, which
+    makes automations like "log 95 mg of caffeine when I arrive at the coffee shop" possible.
+  - Every phrase has to include the app's name. Siri says what was saved and, for intake, today's total. Like
+    the widgets, these ask you to unlock first.
 - The app handles `healthlogger://log/<metric ID>` and `healthlogger://nutrition` links, which the widgets and
   controls use.
 - **Complications** on Apple Watch: the Metric widget, showing a metric's latest reading or today's total.
@@ -65,12 +75,13 @@ identifier and unit options (plus an optional `dailyGoal` for intake metrics), a
 ## Layout
 
 ```
-HealthLogger/        iPhone app (Log, Entry, Nutrition, History, Options screens)
+HealthLogger/        iPhone app (Log, Entry, Nutrition, History, Options screens, Siri phrases)
 HealthLoggerWatch/   Watch app (Favorites, Digital Crown entry)
-HealthLoggerWidgets/ iPhone widget extension (Water, Nutrition, Quick Log, Log Water control)
+HealthLoggerWidgets/ iPhone widget extension (Water, Nutrition, Quick Log, Log Water and Log Metric controls)
 HealthLoggerWatchWidgets/  Watch widget extension (complications)
 Widgets/             Metric widget and widget helpers, compiled into both widget extensions
 Shared/              Metric catalog, HealthStore (HealthKit read/write), NutritionGoals, DeviceSync
-                     (Watch ↔ iPhone) and app group settings, compiled into every target
+                     (Watch ↔ iPhone), app group settings, and the logging intents Siri, Shortcuts and
+                     widget buttons run, compiled into every target
 Config/              Entitlements and the widget extensions' Info.plists
 ```

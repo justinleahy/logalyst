@@ -38,51 +38,6 @@ struct MetricWidgetIntent: WidgetConfigurationIntent {
     }
 }
 
-struct MetricEntity: AppEntity {
-    let id: String
-    let name: String
-    let systemImage: String
-
-    init(_ metric: Metric) {
-        id = metric.id
-        name = metric.name
-        systemImage = metric.systemImage
-    }
-
-    static let typeDisplayRepresentation: TypeDisplayRepresentation = "Metric"
-    static let defaultQuery = MetricEntityQuery()
-
-    var displayRepresentation: DisplayRepresentation {
-        DisplayRepresentation(title: "\(name)", image: .init(systemName: systemImage))
-    }
-}
-
-struct MetricEntityQuery: EntityQuery {
-    @MainActor
-    func entities(for identifiers: [String]) async throws -> [MetricEntity] {
-        identifiers.compactMap { Metric.metric(id: $0) }.map { MetricEntity($0) }
-    }
-
-    @MainActor
-    func suggestedEntities() async throws -> [MetricEntity] {
-        Self.available.map { MetricEntity($0) }
-    }
-
-    @MainActor
-    func defaultResult() async -> MetricEntity? {
-        MetricEntity(.water)
-    }
-
-    @MainActor
-    static var available: [Metric] {
-        #if os(watchOS)
-        Metric.all.filter(\.onWatch)
-        #else
-        Metric.all
-        #endif
-    }
-}
-
 // MARK: - Timeline
 
 struct MetricEntry: TimelineEntry {
@@ -129,7 +84,7 @@ struct MetricProvider: AppIntentTimelineProvider {
 
     private func entry(for configuration: MetricWidgetIntent) async -> MetricEntry {
         let metric = configuration.metric.flatMap { Metric.metric(id: $0.id) } ?? .water
-        let health = await HealthStore.forWidget()
+        let health = await HealthStore.standalone()
         if metric.category == .intake, let option = health.unitOption(for: metric) {
             return await totalEntry(for: metric, option: option, health: health)
         }

@@ -26,13 +26,6 @@ extension Date {
 }
 
 extension HealthStore {
-    /// A HealthStore for use inside a widget extension, with units loaded.
-    static func forWidget() async -> HealthStore {
-        let health = HealthStore(syncsFavorites: false)
-        await health.loadPreferredUnits()
-        return health
-    }
-
     /// Today's total of an intake metric in the given unit, from every source in Health. While Health is
     /// locked, this is the last total a widget read (or zero once the day has rolled over).
     func todayTotal(of metric: Metric, in option: UnitOption) async -> Double {

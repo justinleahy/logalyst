@@ -146,6 +146,13 @@ final class HealthStore {
         sync?.activate()
     }
 
+    /// A HealthStore for widgets and intents, which run outside the app's screens, with units loaded.
+    static func standalone() async -> HealthStore {
+        let health = HealthStore(syncsFavorites: false)
+        await health.loadPreferredUnits()
+        return health
+    }
+
     /// Starred metrics in catalog order.
     var favorites: [Metric] {
         Metric.all.filter { favoriteIDs.contains($0.id) }

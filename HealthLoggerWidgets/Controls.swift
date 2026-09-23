@@ -2,40 +2,6 @@ import AppIntents
 import SwiftUI
 import WidgetKit
 
-/// Saves a glass of water to Health from a widget button or Control Center.
-struct LogWaterIntent: AppIntent {
-    static let title: LocalizedStringResource = "Log Water"
-    static let description = IntentDescription("Saves water to Apple Health.")
-    /// Health data can't be written while the phone is locked, and a locked phone shouldn't log on your behalf.
-    static let authenticationPolicy = IntentAuthenticationPolicy.requiresAuthentication
-
-    @Parameter(title: "Amount")
-    var amount: Double?
-
-    /// The unit label the amount is in (e.g. "mL"). The user's water unit is used when missing.
-    @Parameter(title: "Unit")
-    var unit: String?
-
-    init() {}
-
-    init(amount: Double, option: UnitOption) {
-        self.amount = amount
-        unit = option.label
-    }
-
-    @MainActor
-    func perform() async throws -> some IntentResult {
-        let water = Metric.water
-        let health = await HealthStore.forWidget()
-        guard let option = water.unitOptions.first(where: { $0.label == unit }) ?? health.unitOption(for: water) else {
-            return .result()
-        }
-        let value = amount ?? option.presets.first ?? option.defaultValue
-        try await health.saveQuantity(water, value: value, option: option, date: .now)
-        return .result()
-    }
-}
-
 /// A Control Center and Lock Screen button that logs one glass of water in the user's unit.
 struct LogWaterControl: ControlWidget {
     var body: some ControlWidgetConfiguration {
@@ -51,7 +17,7 @@ struct LogWaterControl: ControlWidget {
 
 /// Opens the app to a metric's entry screen.
 struct OpenMetricIntent: AppIntent {
-    static let title: LocalizedStringResource = "Log Metric"
+    static let title: LocalizedStringResource = "Open Metric"
     static let description = IntentDescription("Opens Health Logger to log a metric.")
 
     @Parameter(title: "Metric")

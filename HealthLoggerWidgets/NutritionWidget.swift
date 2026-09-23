@@ -57,7 +57,7 @@ struct NutritionProvider: TimelineProvider {
     }
 
     private func entry() async -> NutritionEntry {
-        let health = await HealthStore.forWidget()
+        let health = await HealthStore.standalone()
         let goals = NutritionGoals()
         var nutrients: [NutrientTotal] = []
         for metric in Self.metrics {
