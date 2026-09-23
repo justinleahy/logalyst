@@ -170,7 +170,7 @@ struct LogFoodView: View {
                 saved.toggle()
                 if let onSaved { onSaved() } else { dismiss() }
             } catch {
-                self.error = error.localizedDescription
+                self.error = error.healthMessage
             }
         }
     }

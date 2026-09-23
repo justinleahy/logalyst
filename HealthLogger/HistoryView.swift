@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct HistoryView: View {
     @Environment(HealthStore.self) private var health
@@ -37,6 +38,10 @@ struct HistoryView: View {
             .toolbar { EditButton() }
             .refreshable { await reload() }
             .task(id: health.changeCount) { await reload() }
+            // Loads that ran while the phone was locked (such as when iOS prewarms the app) failed, so retry on unlock.
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.protectedDataDidBecomeAvailableNotification)) { _ in
+                Task { await reload() }
+            }
             .alert("Something Went Wrong", isPresented: .constant(error != nil)) {
                 Button("OK") { error = nil }
             } message: {
@@ -54,8 +59,10 @@ struct HistoryView: View {
     private func reload() async {
         do {
             entries = try await health.recentEntries()
+        } catch where error.isHealthDataLocked {
+            // Keep what's showing; this reloads once the phone is unlocked.
         } catch {
-            self.error = error.localizedDescription
+            self.error = error.healthMessage
         }
         loaded = true
     }
@@ -65,7 +72,7 @@ struct HistoryView: View {
             do {
                 for entry in toDelete { try await health.delete(entry) }
             } catch {
-                self.error = error.localizedDescription
+                self.error = error.healthMessage
             }
         }
     }

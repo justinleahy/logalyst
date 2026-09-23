@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import Charts
 
 struct NutritionView: View {
@@ -43,6 +44,10 @@ struct NutritionView: View {
             .sheet(isPresented: $scanning) { ScanFoodView() }
             .refreshable { await reload() }
             .task(id: health.changeCount) { await reload() }
+            // Loads that ran while the phone was locked (such as when iOS prewarms the app) failed, so retry on unlock.
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.protectedDataDidBecomeAvailableNotification)) { _ in
+                Task { await reload() }
+            }
             // Totals roll over at midnight, so refresh whenever the app comes back.
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active { Task { await reload() } }
@@ -173,8 +178,10 @@ struct NutritionView: View {
             let today = Calendar.current.startOfDay(for: .now)
             waterToday = try await health.recentEntries(of: [Self.water], includingFoods: false, since: today)
             foodToday = try await health.recentEntries(of: [], since: today)
+        } catch where error.isHealthDataLocked {
+            // Keep what's showing; this reloads once the phone is unlocked.
         } catch {
-            self.error = error.localizedDescription
+            self.error = error.healthMessage
         }
     }
 
@@ -183,7 +190,7 @@ struct NutritionView: View {
             do {
                 for entry in toDelete { try await health.delete(entry) }
             } catch {
-                self.error = error.localizedDescription
+                self.error = error.healthMessage
             }
         }
     }

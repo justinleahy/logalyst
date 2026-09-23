@@ -46,7 +46,7 @@ struct WatchEntryView: View {
                 dismiss()
             } catch {
                 WKHaptic.failure()
-                self.error = error.localizedDescription
+                self.error = error.healthMessage
             }
         }
     }

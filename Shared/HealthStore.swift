@@ -25,6 +25,23 @@ struct DailyTotal: Identifiable {
     }
 }
 
+extension Error {
+    /// True when Health refused because the device is locked. Health data is encrypted until the next unlock.
+    var isHealthDataLocked: Bool {
+        (self as? HKError)?.code == .errorDatabaseInaccessible
+    }
+
+    /// Text for an alert, replacing HealthKit's "Protected health data is inaccessible" with what to do about it.
+    var healthMessage: String {
+        guard isHealthDataLocked else { return localizedDescription }
+        #if os(watchOS)
+        return "Unlock your Apple Watch to use Health data, then try again."
+        #else
+        return "Unlock your iPhone to use Health data, then try again."
+        #endif
+    }
+}
+
 enum BloodGlucoseMealTime: Int, CaseIterable, Identifiable {
     case unspecified, beforeMeal, afterMeal
 

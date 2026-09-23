@@ -242,7 +242,7 @@ struct EntryView: View {
                 saved.toggle()
                 dismiss()
             } catch {
-                self.error = error.localizedDescription
+                self.error = error.healthMessage
             }
         }
     }
