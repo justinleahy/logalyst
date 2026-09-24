@@ -22,7 +22,7 @@ struct LogWaterControl: ControlWidget {
 /// Opens the app to a metric's entry screen.
 struct OpenMetricIntent: AppIntent {
     static let title: LocalizedStringResource = "Open Metric"
-    static let description = IntentDescription("Opens Health Logger to log a metric.")
+    static let description = IntentDescription("Opens Vitals Log to log a metric.")
 
     @Parameter(title: "Metric")
     var metric: MetricEntity?
@@ -62,7 +62,7 @@ struct LogMetricControl: ControlWidget {
             }
         }
         .displayName("Log Metric")
-        .description("Open Health Logger to log the metric you choose.")
+        .description("Open Vitals Log to log the metric you choose.")
         .promptsForUserConfiguration()
     }
 }

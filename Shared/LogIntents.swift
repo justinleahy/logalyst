@@ -46,7 +46,7 @@ struct WaterUnitOptions: DynamicOptionsProvider {
 }
 
 /// Saves a common size of water. Siri phrases can't hold an arbitrary number, but they can hold one of these,
-/// so "Log 16 ounces of water in Health Logger" works in one sentence.
+/// so "Log 16 ounces of water in Vitals Log" works in one sentence.
 struct LogWaterServingIntent: AppIntent {
     static let title: LocalizedStringResource = "Log Water Serving"
     static let description = IntentDescription("Saves a common serving of water, like 16 fl oz or 500 mL, to the Health app.")

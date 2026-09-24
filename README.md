@@ -1,4 +1,4 @@
-# Health Logger
+# Vitals Log
 
 An iPhone + Apple Watch app for manually logging health data that Apple Watch doesn't capture, written straight into Apple Health (HealthKit).
 
@@ -35,11 +35,11 @@ An iPhone + Apple Watch app for manually logging health data that Apple Watch do
   - *Log Water* and *Log Metric* controls for Control Center and the buttons at the bottom of the Lock Screen.
     Log Metric opens the entry screen for the metric you pick.
 - **Siri and Shortcuts** (iPhone and Apple Watch):
-  - *Log Water*: "Log water in Health Logger" logs a glass in your unit. In Shortcuts you can set any amount
+  - *Log Water*: "Log water in Vitals Log" logs a glass in your unit. In Shortcuts you can set any amount
     and unit.
-  - *Log Water Serving*: "Log 16 ounces of water in Health Logger" (or 8, 12, 20, 24 or 32 oz, 250, 330, 500 or
+  - *Log Water Serving*: "Log 16 ounces of water in Vitals Log" (or 8, 12, 20, 24 or 32 oz, 250, 330, 500 or
     750 mL, or a liter) logs it in one sentence. Siri phrases can't hold any number, only choices from a list.
-  - *Log Metric*: "Log my weight in Health Logger" (or blood glucose, caffeine, or any other metric logged as a
+  - *Log Metric*: "Log my weight in Vitals Log" (or blood glucose, caffeine, or any other metric logged as a
     number that the device offers) asks for the value in your unit, then saves it. In Shortcuts you can set the
     value and unit, which makes automations like "log 95 mg of caffeine when I arrive at the coffee shop" possible.
   - Every phrase has to include the app's name. Siri says what was saved and, for intake, today's total. Like
