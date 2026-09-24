@@ -235,16 +235,23 @@ final class WaterReminders: NSObject, UNUserNotificationCenterDelegate {
 
     // MARK: Responding
 
-    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
-                                            willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
-        [.banner, .list, .sound]
+    // These use completion handlers, not the async versions: UIKit requires the handler to be called on the main
+    // thread, and the async versions call it from a background thread once they return, which crashes.
+
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
+                                            withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([.banner, .list, .sound])
     }
 
-    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
-                                            didReceive response: UNNotificationResponse) async {
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
+                                            withCompletionHandler completionHandler: @escaping () -> Void) {
+        guard response.notification.request.content.categoryIdentifier == Self.categoryID else { return completionHandler() }
         let action = response.actionIdentifier
-        guard response.notification.request.content.categoryIdentifier == Self.categoryID else { return }
-        await respond(to: action)
+        nonisolated(unsafe) let completionHandler = completionHandler
+        Task { @MainActor in
+            await respond(to: action)
+            completionHandler()
+        }
     }
 
     private func respond(to action: String) async {
