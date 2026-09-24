@@ -1,9 +1,8 @@
 import SwiftUI
-import UIKit
 
 struct OptionsView: View {
     @Environment(HealthStore.self) private var health
-    @Environment(WaterReminders.self) private var reminders
+    @Environment(LogReminders.self) private var reminders
 
     var body: some View {
         NavigationStack {
@@ -36,58 +35,19 @@ struct OptionsView: View {
     }
 
     private var remindersSection: some View {
-        @Bindable var reminders = reminders
-        let enabled = Binding {
-            reminders.isEnabled
-        } set: { on in
-            Task { await reminders.setEnabled(on) }
-        }
+        let count = reminders.reminders.filter(\.isEnabled).count
         return Section {
-            Toggle(isOn: enabled) {
-                Label("Water Reminders", systemImage: "bell.badge")
-            }
-            if reminders.isEnabled {
-                Picker("Remind After", selection: $reminders.interval) {
-                    ForEach(WaterReminders.intervals, id: \.self) { minutes in
-                        Text(Duration.seconds(minutes * 60).formatted(.units(allowed: [.hours, .minutes], width: .wide)))
-                    }
+            NavigationLink {
+                LogRemindersView()
+            } label: {
+                LabeledContent {
+                    Text(count == 0 ? "Off" : "\(count) On")
+                } label: {
+                    Label("Log Reminders", systemImage: "bell")
                 }
-                DatePicker("From", selection: timeBinding($reminders.startMinute), displayedComponents: .hourAndMinute)
-                DatePicker("Until", selection: timeBinding($reminders.endMinute),
-                           in: time(reminders.startMinute)..., displayedComponents: .hourAndMinute)
-                Toggle("Stop When Goal Is Met", isOn: $reminders.stopsAtGoal)
             }
-        } header: {
-            Text("Hydration")
         } footer: {
-            if reminders.isDenied {
-                VStack(alignment: .leading) {
-                    Text("Notifications are turned off for Vitals Log.")
-                    Button("Open Settings") {
-                        if let url = URL(string: UIApplication.openNotificationSettingsURLString) {
-                            UIApplication.shared.open(url)
-                        }
-                    }
-                    .font(.footnote)
-                }
-            } else if reminders.isEnabled {
-                Text("Reminds you when you haven't logged water for a while, between these times. "
-                     + "Touch and hold a reminder to log a glass without opening the app.")
-            }
-        }
-    }
-
-    /// Today at a number of minutes after midnight, for the reminder time pickers.
-    private func time(_ minute: Int) -> Date {
-        Calendar.current.date(byAdding: .minute, value: minute, to: Calendar.current.startOfDay(for: .now)) ?? .now
-    }
-
-    private func timeBinding(_ minute: Binding<Int>) -> Binding<Date> {
-        Binding {
-            time(minute.wrappedValue)
-        } set: { date in
-            let parts = Calendar.current.dateComponents([.hour, .minute], from: date)
-            minute.wrappedValue = (parts.hour ?? 0) * 60 + (parts.minute ?? 0)
+            Text("Get reminded to log water, blood pressure, weight or any other metric, on a schedule you choose.")
         }
     }
 

@@ -24,12 +24,16 @@ An iPhone + Apple Watch app for manually logging health data that Apple Watch do
   list of today's water to tap and fix or swipe away), shows calories, macros, sugar, fiber and caffeine against daily
   targets or limits, and charts any intake metric over the last 7 days. Totals include data other apps
   save to Health. Tap the target button to edit goals.
-- **Water reminders:** turn them on in the **Options** tab to get a notification when you haven't logged water
-  for a while (1 to 4 hours), between the times you pick. Water logged anywhere (the app, widgets, Siri, the Watch
-  or other apps) pushes the next reminder back, and they stop for the day once you reach your water goal (you can
-  turn that off). Touch and hold a reminder to log a glass (your smallest water preset) without opening the app,
-  or tap it to open Nutrition. Reminders are scheduled on the iPhone a few days ahead and show on the Watch while
-  the iPhone is locked.
+- **Log reminders:** in **Options → Log Reminders**, add a reminder for any metric, such as water, blood pressure
+  or weight. Each one comes at set times of day, or whenever you haven't logged the metric for a while (1 to 12
+  hours) between the times you pick. They repeat every so many days, on chosen weekdays every so many weeks, or on
+  chosen dates (or a weekday like the last Friday) every so many months. Logging the metric anywhere (the app,
+  widgets, Siri, the Watch or other apps) skips a set-time reminder that's already been answered or pushes the next
+  not-logged one back. Metrics with a daily target, like water, can stop for the day once it's reached, and their
+  reminders show how much is left. Touch and hold a reminder to log a quick-log amount (your first preset, e.g. a
+  glass of water) without opening the app, or tap it to open the metric. Reminders are scheduled on the iPhone
+  ahead of time and show on the Watch while the iPhone is locked. Water reminders set up in earlier versions carry
+  over.
 - **Suggest Goals:** in the goals sheet, estimates water, calories, protein, carbs, fat, sugar and fiber from your weight,
   height, age and sex (read from Health when set, otherwise typed in), activity level, and whether you want to
   lose, maintain or gain weight. Calories burned at rest come from Apple Health's resting energy when there are at

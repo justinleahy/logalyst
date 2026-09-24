@@ -2,7 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @Environment(HealthStore.self) private var health
-    @Environment(WaterReminders.self) private var reminders
+    @Environment(LogReminders.self) private var reminders
     @State private var authError: String?
     @State private var tab = AppTab.log
     @State private var logPath: [Metric] = []
@@ -43,7 +43,7 @@ struct ContentView: View {
         }
     }
 
-    /// Handles links from widgets and water reminders.
+    /// Handles links from widgets and reminders.
     private func open(_ url: URL) {
         switch DeepLink(url: url) {
         case .log(let metric):

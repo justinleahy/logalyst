@@ -6,12 +6,12 @@ import SwiftData
 struct HealthLoggerApp: App {
     @State private var health: HealthStore
     @State private var goals: NutritionGoals
-    @State private var reminders: WaterReminders
+    @State private var reminders: LogReminders
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
         let health = HealthStore()
-        let reminders = WaterReminders(health: health)
+        let reminders = LogReminders(health: health)
         _health = State(initialValue: health)
         _reminders = State(initialValue: reminders)
         _goals = State(initialValue: NutritionGoals {
