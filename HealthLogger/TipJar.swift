@@ -85,7 +85,7 @@ struct TipJarView: View {
                     ForEach(tipJar.products) { row(for: $0) }
                 }
             } header: {
-                Text("Vitals Log is free, with no ads or tracking. If it's useful to you, a tip helps keep it going.")
+                Text("Logalyst is free, with no ads or tracking. If it's useful to you, a tip helps keep it going.")
                     .textCase(nil)
                     .font(.body)
                     .foregroundStyle(.primary)
@@ -100,7 +100,7 @@ struct TipJarView: View {
         .alert("Thank You!", isPresented: $tipJar.showsThanks) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("Your tip means a lot and helps keep Vitals Log going.")
+            Text("Your tip means a lot and helps keep Logalyst going.")
         }
     }
 

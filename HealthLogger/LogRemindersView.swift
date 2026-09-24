@@ -40,7 +40,7 @@ struct LogRemindersView: View {
             } footer: {
                 if reminders.isDenied {
                     VStack(alignment: .leading) {
-                        Text("Notifications are turned off for Vitals Log.")
+                        Text("Notifications are turned off for Logalyst.")
                         Button("Open Settings") {
                             if let url = URL(string: UIApplication.openNotificationSettingsURLString) {
                                 UIApplication.shared.open(url)

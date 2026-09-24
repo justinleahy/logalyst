@@ -32,7 +32,7 @@ struct OptionsView: View {
                         Label("Tip Jar", systemImage: "heart")
                     }
                 } footer: {
-                    Text("Enjoying Vitals Log? Leave a tip to support its development.")
+                    Text("Enjoying Logalyst? Leave a tip to support its development.")
                 }
                 Section("About") {
                     LabeledContent("Version", value: bundleValue("CFBundleShortVersionString"))
