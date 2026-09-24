@@ -16,7 +16,7 @@ struct GoalsView: View {
                         Label("Suggest Goals for Me", systemImage: "wand.and.sparkles")
                     }
                 } footer: {
-                    Text("Estimates calories and nutrients from your height, weight, age and activity.")
+                    Text("Estimates water, calories and nutrients from your height, weight, age and activity.")
                 }
                 Section {
                     ForEach(metrics) { metric in

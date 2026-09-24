@@ -1,6 +1,6 @@
 import Foundation
 
-/// What Suggest Goals needs to estimate someone's daily calories and nutrients.
+/// What Suggest Goals needs to estimate someone's daily water, calories and nutrients.
 struct BodyProfile {
     enum Sex: String, CaseIterable, Identifiable {
         case female, male, other
@@ -27,6 +27,16 @@ struct BodyProfile {
         /// The lowest calorie goal suggested, so a weight-loss goal is never a crash diet.
         var calorieFloor: Double {
             self == .male ? 1500 : 1200
+        }
+
+        /// Water from drinks a day in mL: about 80% of the US National Academies' adequate intake of total water
+        /// (2.7 L for women, 3.7 L for men), since food supplies the rest. Other uses the midpoint of the two.
+        var drinkingWater: Double {
+            switch self {
+            case .female: 2200
+            case .male: 3000
+            case .other: 2600
+            }
         }
     }
 
@@ -63,6 +73,17 @@ struct BodyProfile {
             case .moderate: 1.55
             case .active: 1.725
             case .veryActive: 1.9
+            }
+        }
+
+        /// Extra water in mL a day to replace sweat lost to exercise, averaged over the week.
+        var extraWater: Double {
+            switch self {
+            case .sedentary: 0
+            case .light: 250
+            case .moderate: 500
+            case .active: 750
+            case .veryActive: 1000
             }
         }
     }
@@ -110,13 +131,14 @@ struct BodyProfile {
     }
 }
 
-/// Daily goals estimated from a body profile, in each metric's first unit option (kcal and grams).
+/// Daily goals estimated from a body profile, in each metric's first unit option (mL, kcal and grams).
 struct SuggestedGoals {
     static let deficit = 500.0
     static let surplus = 300.0
     static let proteinPerKg = 1.6
     static let maintenanceProteinPerKg = 1.2
 
+    let water: Double
     let calories: Double
     let protein: Double
     let carbs: Double
@@ -125,6 +147,8 @@ struct SuggestedGoals {
     let fiber: Double
 
     init(_ profile: BodyProfile) {
+        // Water doesn't depend on the weight goal.
+        water = ((profile.sex.drinkingWater + profile.activity.extraWater) / 100).rounded() * 100
         let maintenance = profile.maintenanceCalories
         let target = switch profile.aim {
         // Cap the deficit at 20% so smaller, less active people aren't cut too hard.
@@ -146,6 +170,7 @@ struct SuggestedGoals {
     /// Goals keyed by metric ID, for `NutritionGoals.setGoals`.
     var amounts: [String: Double] {
         [
+            "dietaryWater": water,
             "dietaryEnergyConsumed": calories,
             "dietaryProtein": protein,
             "dietaryCarbohydrates": carbs,

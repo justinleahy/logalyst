@@ -30,15 +30,17 @@ An iPhone + Apple Watch app for manually logging health data that Apple Watch do
   turn that off). Touch and hold a reminder to log a glass (your smallest water preset) without opening the app,
   or tap it to open Nutrition. Reminders are scheduled on the iPhone a few days ahead and show on the Watch while
   the iPhone is locked.
-- **Suggest Goals:** in the goals sheet, estimates calories, protein, carbs, fat, sugar and fiber from your weight,
+- **Suggest Goals:** in the goals sheet, estimates water, calories, protein, carbs, fat, sugar and fiber from your weight,
   height, age and sex (read from Health when set, otherwise typed in), activity level, and whether you want to
   lose, maintain or gain weight. Calories burned at rest come from Apple Health's resting energy when there are at
   least 3 days of it in the last two weeks (the median day, so days the Watch was off for a while don't lower it;
   you can turn this off), otherwise from the Mifflin–St Jeor equation. Protein is 1.6 g/kg (1.2 g/kg to maintain),
   capped at 35% of calories. Fat is 30% and carbs are the rest. Sugar stays under 10% and fiber is 14 g per
   1,000 kcal. Losing weight takes off up to 500 kcal (never more than 20%, or below 1,200/1,500 kcal), and
-  gaining adds 300 kcal. It only suggests goals for adults, and nothing changes until you tap *Use These Goals*.
-  Water and caffeine goals aren't touched.
+  gaining adds 300 kcal. Water is the US National Academies' adequate intake from drinks (2.2 L for women, 3.0 L
+  for men, 2.6 L otherwise; about 80% of total water, since food supplies the rest) plus 250 mL to 1 L for
+  activity, and doesn't change with the weight goal. It only suggests goals for adults, and nothing changes until
+  you tap *Use These Goals*. The caffeine limit isn't touched.
 - **Foods:** save foods with their nutrition per serving (My Foods), then log them by the serving. Each one is
   saved to Health as a single food entry, so Health shows it by name and History lists it once. Scan a
   barcode to jump straight to a saved food, or to fill in a new one from

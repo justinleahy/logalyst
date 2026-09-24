@@ -1,7 +1,7 @@
 import HealthKit
 import SwiftUI
 
-/// Estimates calorie and nutrient goals from the user's body, activity and aim, then applies them on request.
+/// Estimates water, calorie and nutrient goals from the user's body, activity and aim, then applies them on request.
 struct SuggestGoalsView: View {
     @Environment(HealthStore.self) private var health
     @Environment(NutritionGoals.self) private var goals
@@ -176,9 +176,9 @@ struct SuggestGoalsView: View {
         if let profile {
             let suggestion = SuggestedGoals(profile)
             Section {
-                ForEach(NutritionView.food) { metric in
-                    if let amount = suggestion.amounts[metric.id] {
-                        suggestionRow(metric, amount: amount)
+                ForEach([NutritionView.water] + NutritionView.food) { metric in
+                    if let amount = suggestion.amounts[metric.id], let option = health.unitOption(for: metric) {
+                        suggestionRow(metric, amount: amount, option: option)
                     }
                 }
                 Button("Use These Goals") {
@@ -205,9 +205,10 @@ struct SuggestGoalsView: View {
         }
     }
 
-    private func suggestionRow(_ metric: Metric, amount: Double) -> some View {
-        let option = metric.unitOptions[0]
-        let current = goals.goal(for: metric, in: option)
+    /// `amount` is in the metric's first unit option; it's shown in the user's unit (e.g. fl oz for water).
+    private func suggestionRow(_ metric: Metric, amount: Double, option: UnitOption) -> some View {
+        let amount = option.rounded(option.displayValue(amount, from: metric.unitOptions[0]))
+        let current = goals.goal(for: metric, in: option).map(option.rounded)
         return HStack {
             Label {
                 VStack(alignment: .leading) {
@@ -233,6 +234,13 @@ struct SuggestGoalsView: View {
         "\(Int(value.rounded()).formatted()) kcal"
     }
 
+    /// A water amount in mL, in the user's water unit.
+    private func water(_ mL: Double) -> String {
+        let canonical = NutritionView.water.unitOptions[0]
+        let option = health.unitOption(for: NutritionView.water) ?? canonical
+        return option.format(option.rounded(option.displayValue(mL, from: canonical)))
+    }
+
     private func explanation(for profile: BodyProfile) -> String {
         let kcal = Self.kcal
         let adjustment = switch profile.aim {
@@ -244,7 +252,12 @@ struct SuggestGoalsView: View {
             ? "Mifflin–St Jeor equation"
             : "Apple Health's resting energy, typical day over the last 2 weeks"
         let proteinPerKg = profile.aim == .maintain ? SuggestedGoals.maintenanceProteinPerKg : SuggestedGoals.proteinPerKg
+        let extraWater = profile.activity.extraWater
+        let activityWater = extraWater > 0 ? ", plus \(water(extraWater)) for your activity" : ""
         return """
+            Water is \(water(profile.sex.drinkingWater)) from drinks, about 80% of the US National Academies' \
+            recommended total (food supplies the rest)\(activityWater). Drink more in hot weather.
+
             You burn about \(kcal(profile.restingCalories)) a day at rest (\(restingSource)) and \
             \(kcal(profile.maintenanceCalories)) with your activity.\(adjustment) Protein is \(proteinPerKg.formatted()) g per kg \
             of body weight, fat 30% of calories, carbohydrates the rest, sugar under 10% of calories, and fiber 14 g \
