@@ -7,6 +7,8 @@ struct HealthLoggerApp: App {
     @State private var health: HealthStore
     @State private var goals: NutritionGoals
     @State private var reminders: LogReminders
+    // Created at launch so it can finish tips that complete while the app is closed.
+    @State private var tipJar = TipJar()
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -28,6 +30,7 @@ struct HealthLoggerApp: App {
                 .environment(health)
                 .environment(goals)
                 .environment(reminders)
+                .environment(tipJar)
                 .modelContainer(for: Food.self)
         }
         // Reminders are scheduled days ahead, so top them up and refresh today's progress whenever the app opens.

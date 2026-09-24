@@ -84,6 +84,7 @@
 		0A0000000000000000000084 /* HealthLoggerWidgets-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "HealthLoggerWidgets-Info.plist"; sourceTree = "<group>"; };
 		0A0000000000000000000085 /* HealthLoggerWatchWidgets-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "HealthLoggerWatchWidgets-Info.plist"; sourceTree = "<group>"; };
 		0A0000000000000000000086 /* HealthLogger-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "HealthLogger-Info.plist"; sourceTree = "<group>"; };
+		0A0000000000000000000087 /* TipJar.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = TipJar.storekit; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -192,6 +193,7 @@
 				0A0000000000000000000086 /* HealthLogger-Info.plist */,
 				0A0000000000000000000084 /* HealthLoggerWidgets-Info.plist */,
 				0A0000000000000000000085 /* HealthLoggerWatchWidgets-Info.plist */,
+				0A0000000000000000000087 /* TipJar.storekit */,
 			);
 			path = Config;
 			sourceTree = "<group>";
@@ -217,8 +219,8 @@
 			);
 			fileSystemSynchronizedGroups = (
 				0A0000000000000000000010 /* Shared */,
-				0A0000000000000000000016 /* AppShortcuts */,
 				0A0000000000000000000011 /* HealthLogger */,
+				0A0000000000000000000016 /* AppShortcuts */,
 			);
 			name = HealthLogger;
 			packageProductDependencies = (
@@ -243,8 +245,8 @@
 			);
 			fileSystemSynchronizedGroups = (
 				0A0000000000000000000010 /* Shared */,
-				0A0000000000000000000016 /* AppShortcuts */,
 				0A0000000000000000000012 /* HealthLoggerWatch */,
+				0A0000000000000000000016 /* AppShortcuts */,
 			);
 			name = HealthLoggerWatch;
 			packageProductDependencies = (

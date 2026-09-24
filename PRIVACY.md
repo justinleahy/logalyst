@@ -68,7 +68,13 @@ As with any website, Open Food Facts also receives your device's IP address when
 else is sent: no health data, name, account or device identifier. Open Food Facts' handling of this data is
 covered by the [Open Food Facts privacy policy](https://world.openfoodfacts.org/privacy).
 
-If you don't scan or type barcodes, Vitals Log never connects to the internet.
+If you don't scan or type barcodes, Vitals Log never connects to the internet, except to the App Store to show
+and buy tips when you open the Tip Jar.
+
+## Tips
+
+If you leave a tip in the Tip Jar, the purchase is handled entirely by Apple through the App Store. Vitals Log
+never sees your payment details, and doesn't keep a record of tips.
 
 ## Information from Apple
 

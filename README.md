@@ -81,6 +81,8 @@ An iPhone + Apple Watch app for manually logging health data that Apple Watch do
 - Widgets read Health directly. While the phone is locked, Health can't be read, so they show the last values
   they read (daily totals reset at midnight). Logging from a widget asks you to unlock first.
 - Every sample is tagged `HKMetadataKeyWasUserEntered`, so Health shows it as manually entered.
+- **Tip Jar:** in **Options → Tip Jar**, optional tips (consumable in-app purchases) support the app. They don't
+  unlock anything.
 
 ## Running it
 
@@ -95,6 +97,9 @@ An iPhone + Apple Watch app for manually logging health data that Apple Watch do
 3. Select the `HealthLogger` scheme and your iPhone, then Run. The Watch app installs through the Watch app on
    your iPhone (or run the `HealthLoggerWatch` scheme directly on your watch).
 4. Approve the Health permission sheet on first launch (on each device).
+5. The Tip Jar loads its tips from `Config/TipJar.storekit` when run from Xcode, so they can be bought for free in
+   testing. For TestFlight and the App Store, create consumable in-app purchases in App Store Connect with the
+   product IDs in `TipJar.productIDs` (`HealthLogger/TipJar.swift`).
 
 ## Adding a metric
 

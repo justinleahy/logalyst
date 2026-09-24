@@ -25,6 +25,15 @@ struct OptionsView: View {
                     Text("Auto follows your unit preferences in the Health app, or your region if none are set. "
                          + "Changing a unit here only affects how values are shown and entered on this iPhone.")
                 }
+                Section {
+                    NavigationLink {
+                        TipJarView()
+                    } label: {
+                        Label("Tip Jar", systemImage: "heart")
+                    }
+                } footer: {
+                    Text("Enjoying Vitals Log? Leave a tip to support its development.")
+                }
                 Section("About") {
                     LabeledContent("Version", value: bundleValue("CFBundleShortVersionString"))
                     LabeledContent("Build", value: bundleValue("CFBundleVersion"))

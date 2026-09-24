@@ -1,0 +1,74 @@
+{
+  "appPolicies" : {
+    "eula" : "",
+    "policies" : [
+
+    ]
+  },
+  "identifier" : "5B1E2C3A",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+    {
+      "displayPrice" : "0.99",
+      "familyShareable" : false,
+      "internalID" : "6A1B2C01",
+      "localizations" : [
+        {
+          "description" : "A small thank-you",
+          "displayName" : "Glass of Water",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.justinleahy.HealthLogger.tip.small",
+      "referenceName" : "Small Tip",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "2.99",
+      "familyShareable" : false,
+      "internalID" : "6A1B2C02",
+      "localizations" : [
+        {
+          "description" : "A generous thank-you",
+          "displayName" : "Cup of Coffee",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.justinleahy.HealthLogger.tip.medium",
+      "referenceName" : "Medium Tip",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "4.99",
+      "familyShareable" : false,
+      "internalID" : "6A1B2C03",
+      "localizations" : [
+        {
+          "description" : "A huge thank-you",
+          "displayName" : "Healthy Lunch",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.justinleahy.HealthLogger.tip.large",
+      "referenceName" : "Large Tip",
+      "type" : "Consumable"
+    }
+  ],
+  "settings" : {
+    "_failTransactionsEnabled" : false,
+    "_locale" : "en_US",
+    "_storefront" : "USA",
+    "_storeKitErrors" : [
+
+    ]
+  },
+  "subscriptionGroups" : [
+
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}
