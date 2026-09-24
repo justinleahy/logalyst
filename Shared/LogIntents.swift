@@ -33,7 +33,7 @@ struct LogWaterIntent: AppIntent {
         let water = Metric.water
         let health = await HealthStore.standalone()
         let option = try health.unitOption(for: water, labeled: unit)
-        let value = amount ?? option.presets.first ?? option.defaultValue
+        let value = amount ?? health.presets(for: water, in: option).first ?? option.defaultValue
         return .result(dialog: try await health.log(water, value: value, option: option))
     }
 }

@@ -100,14 +100,51 @@ struct EntryView: View {
             } footer: {
                 Text("Valid range: \(option.format(option.range.lowerBound)) – \(option.format(option.range.upperBound))")
             }
-            if !option.presets.isEmpty {
-                Section("Presets") {
-                    HStack {
-                        ForEach(option.presets, id: \.self) { amount in
-                            Button(option.format(amount)) { value = amount }
-                                .buttonStyle(.bordered)
+            presetsSection(option: option)
+        }
+    }
+
+    /// Tap a preset to fill it in. Presets can be added from the typed amount and removed by touch and hold.
+    @ViewBuilder
+    private func presetsSection(option: UnitOption) -> some View {
+        let presets = health.presets(for: metric, in: option)
+        let canAdd = value.map { health.canAddPreset($0, for: metric, in: option) } ?? false
+        let canReset = health.hasCustomPresets(for: metric, in: option) && !option.presets.isEmpty
+        if !presets.isEmpty || canAdd || canReset {
+            Section {
+                if !presets.isEmpty {
+                    ScrollView(.horizontal) {
+                        HStack {
+                            ForEach(presets, id: \.self) { amount in
+                                Button(option.format(amount)) { value = amount }
+                                    .buttonStyle(.bordered)
+                                    .contextMenu {
+                                        // The whole row lifts with the menu, so name the preset being removed.
+                                        Button("Remove \(option.format(amount))", systemImage: "trash",
+                                               role: .destructive) {
+                                            health.removePreset(amount, for: metric, in: option)
+                                        }
+                                    }
+                            }
                         }
                     }
+                    .scrollIndicators(.hidden)
+                }
+                if canAdd, let value {
+                    Button("Save \(option.format(option.rounded(value))) as Preset", systemImage: "plus.circle") {
+                        health.addPreset(value, for: metric, in: option)
+                    }
+                }
+                if canReset {
+                    Button("Restore Default Presets", systemImage: "arrow.counterclockwise") {
+                        health.resetPresets(for: metric, in: option)
+                    }
+                }
+            } header: {
+                Text("Presets")
+            } footer: {
+                if !presets.isEmpty {
+                    Text("Touch and hold a preset to remove it.")
                 }
             }
         }

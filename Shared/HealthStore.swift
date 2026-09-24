@@ -192,8 +192,10 @@ final class HealthStore {
         reconcileFavorites(with: remote.favorites)
         #if os(watchOS)
         if let goals = remote.goals { NutritionGoals.receive(goals) }
+        if let presets = remote.presets { receivePresets(presets) }
         #else
         sendGoals()
+        sendPresets()
         #endif
     }
 
@@ -213,6 +215,67 @@ final class HealthStore {
     /// Does nothing if the Watch already has them.
     func sendGoals() {
         sync?.send(goals: NutritionGoals.saved)
+    }
+
+    // MARK: Presets
+
+    static let maxPresets = 6
+    private static let presetsKey = "customPresets"
+    /// Preset amounts the user edited, keyed by metric ID then unit label, in that unit. A missing entry means the
+    /// unit's built-in presets; an empty list means the user removed them all. Set on the iPhone, synced to the Watch.
+    private var customPresets = AppGroup.defaults.dictionary(forKey: presetsKey) as? [String: [String: [Double]]] ?? [:]
+
+    /// Quick-entry amounts for a metric in a unit, smallest first: the user's own if they've edited them,
+    /// otherwise the built-in ones.
+    func presets(for metric: Metric, in option: UnitOption) -> [Double] {
+        customPresets[metric.id]?[option.label] ?? option.presets
+    }
+
+    func hasCustomPresets(for metric: Metric, in option: UnitOption) -> Bool {
+        customPresets[metric.id]?[option.label] != nil
+    }
+
+    /// Whether the amount could be added as a new preset: in range, not already one, and under the limit.
+    func canAddPreset(_ value: Double, for metric: Metric, in option: UnitOption) -> Bool {
+        let presets = presets(for: metric, in: option)
+        return option.range.contains(value) && !presets.contains(option.rounded(value))
+            && presets.count < Self.maxPresets
+    }
+
+    func addPreset(_ value: Double, for metric: Metric, in option: UnitOption) {
+        guard canAddPreset(value, for: metric, in: option) else { return }
+        setPresets((presets(for: metric, in: option) + [option.rounded(value)]).sorted(), for: metric, in: option)
+    }
+
+    func removePreset(_ value: Double, for metric: Metric, in option: UnitOption) {
+        setPresets(presets(for: metric, in: option).filter { $0 != value }, for: metric, in: option)
+    }
+
+    /// Goes back to the unit's built-in presets.
+    func resetPresets(for metric: Metric, in option: UnitOption) {
+        setPresets(nil, for: metric, in: option)
+    }
+
+    private func setPresets(_ amounts: [Double]?, for metric: Metric, in option: UnitOption) {
+        // A list matching the built-in one isn't stored, so the unit counts as unedited again.
+        customPresets[metric.id, default: [:]][option.label] = amounts == option.presets ? nil : amounts
+        if customPresets[metric.id]?.isEmpty == true { customPresets[metric.id] = nil }
+        AppGroup.defaults.set(customPresets, forKey: Self.presetsKey)
+        WidgetCenter.shared.reloadAllTimelines()
+        sendPresets()
+    }
+
+    /// Offers the Watch the presets edited on this iPhone, so its Log Water control logs the same glass.
+    func sendPresets() {
+        sync?.send(presets: customPresets)
+    }
+
+    /// Stores the presets the iPhone sent.
+    private func receivePresets(_ presets: [String: [String: [Double]]]) {
+        guard presets != customPresets else { return }
+        customPresets = presets
+        AppGroup.defaults.set(presets, forKey: Self.presetsKey)
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     // MARK: Saving

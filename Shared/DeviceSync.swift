@@ -11,14 +11,17 @@ struct RemoteState: Sendable {
     var favorites: FavoritesState?
     /// Daily goal amounts keyed by metric ID. Only the iPhone sends these, since goals are set there.
     var goals: [String: Double]?
+    /// Edited presets keyed by metric ID then unit label. Only the iPhone sends these, since presets are edited there.
+    var presets: [String: [String: [Double]]]?
 }
 
-/// Keeps favorites and goals in step between the iPhone and Watch apps through the WatchConnectivity application
+/// Keeps favorites, goals and presets in step between the iPhone and Watch apps through the WatchConnectivity application
 /// context, which always holds the latest state and is delivered even if the other app isn't running.
 nonisolated final class DeviceSync: NSObject, WCSessionDelegate, Sendable {
     private static let idsKey = "favoriteIDs"
     private static let updatedKey = "favoritesUpdated"
     private static let goalsKey = "nutritionGoals"
+    private static let presetsKey = "customPresets"
 
     /// Called with the other device's state after activation and on every update.
     private let onReceive: @MainActor @Sendable (RemoteState) -> Void
@@ -42,8 +45,12 @@ nonisolated final class DeviceSync: NSObject, WCSessionDelegate, Sendable {
         update([Self.goalsKey: goals])
     }
 
+    func send(presets: [String: [String: [Double]]]) {
+        update([Self.presetsKey: presets])
+    }
+
     /// Merges values into the context this device last sent. Each update replaces the whole context, so sending
-    /// favorites alone would otherwise drop the goals, and vice versa.
+    /// favorites alone would otherwise drop the goals and presets, and vice versa.
     private func update(_ values: [String: Any]) {
         guard WCSession.isSupported() else { return }
         let session = WCSession.default
@@ -58,7 +65,8 @@ nonisolated final class DeviceSync: NSObject, WCSessionDelegate, Sendable {
     }
 
     private func deliver(_ context: [String: Any]) {
-        var state = RemoteState(goals: context[Self.goalsKey] as? [String: Double])
+        var state = RemoteState(goals: context[Self.goalsKey] as? [String: Double],
+                                presets: context[Self.presetsKey] as? [String: [String: [Double]]])
         if let ids = context[Self.idsKey] as? [String], let updated = context[Self.updatedKey] as? Date {
             state.favorites = FavoritesState(ids: ids, updated: updated)
         }

@@ -20,6 +20,8 @@ struct WaterWidget: Widget {
 struct WaterEntry: TimelineEntry {
     var date = Date.now
     let option: UnitOption
+    /// The user's water presets in this unit, for the quick-add buttons.
+    let presets: [Double]
     let total: Double
     let goal: Double
 
@@ -29,7 +31,7 @@ struct WaterEntry: TimelineEntry {
 struct WaterProvider: TimelineProvider {
     func placeholder(in context: Context) -> WaterEntry {
         let option = Metric.water.unitOptions[0]
-        return WaterEntry(option: option, total: 1250, goal: 2000)
+        return WaterEntry(option: option, presets: option.presets, total: 1250, goal: 2000)
     }
 
     func getSnapshot(in context: Context, completion: @escaping @Sendable (WaterEntry) -> Void) {
@@ -44,7 +46,8 @@ struct WaterProvider: TimelineProvider {
         let water = Metric.water
         let health = await HealthStore.standalone()
         let option = health.unitOption(for: water) ?? water.unitOptions[0]
-        return WaterEntry(option: option, total: await health.todayTotal(of: water, in: option),
+        return WaterEntry(option: option, presets: health.presets(for: water, in: option),
+                          total: await health.todayTotal(of: water, in: option),
                           goal: NutritionGoals().goal(for: water, in: option) ?? 0)
     }
 }
@@ -106,10 +109,10 @@ struct WaterWidgetView: View {
         }
     }
 
-    /// Quick-add buttons for the unit's preset amounts (e.g. 250 and 500 mL).
+    /// Quick-add buttons for the first few preset amounts (e.g. 250 and 500 mL), as many as fit.
     private var buttons: some View {
         HStack(spacing: 6) {
-            ForEach(option.presets, id: \.self) { amount in
+            ForEach(entry.presets.prefix(family == .systemSmall ? 2 : 3), id: \.self) { amount in
                 Button(intent: LogWaterIntent(amount: amount, option: option)) {
                     Text("+\(option.formatNumber(amount))")
                         .font(.subheadline.weight(.semibold).monospacedDigit())

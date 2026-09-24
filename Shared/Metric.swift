@@ -38,6 +38,7 @@ struct UnitOption: Hashable {
     var fractionDigits = 0
     /// Multiplier from the HealthKit value to the displayed value (percent types are stored as 0–1).
     var scale: Double = 1
+    /// Built-in quick-entry amounts. Users can edit them; read them through `HealthStore.presets(for:in:)`.
     var presets: [Double] = []
     /// Label to use when the value is exactly 1 (e.g. "drink" vs "drinks").
     var singularLabel: String?
@@ -53,6 +54,12 @@ struct UnitOption: Hashable {
     /// Converts a value entered in another unit option of the same metric into this one.
     func displayValue(_ value: Double, from other: UnitOption) -> Double {
         displayValue(from: other.quantity(fromDisplay: value))
+    }
+
+    /// The value rounded to the digits this unit shows, so an amount typed as 250.004 matches a 250 preset.
+    func rounded(_ value: Double) -> Double {
+        let scale = pow(10, Double(fractionDigits))
+        return (value * scale).rounded() / scale
     }
 
     /// The number alone, without the unit label.

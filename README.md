@@ -16,6 +16,10 @@ An iPhone + Apple Watch app for manually logging health data that Apple Watch do
 - Units follow your Health app preferences (e.g. lb vs kg, mg/dL vs mmol/L) unless you pick one in the
   **Options** tab, and you can switch per entry.
 - Measurements like weight and blood pressure are prefilled with your last reading.
+- **Presets:** tap a preset amount on an entry screen to fill it in. Type an amount and tap *Save as Preset* to add
+  your own (up to 6 per unit, for any number metric), touch and hold one to remove it, or restore the defaults.
+  Presets are kept per unit, so a 330 mL preset doesn't show when you enter fl oz. The Water widget's buttons use
+  your first water presets, and they're edited on the iPhone and sent to the Watch.
 - **Nutrition** tab tracks today's water against a daily goal (with a progress ring and a
   list of today's water to fix mistakes), shows calories, macros, sugar, fiber and caffeine against daily
   targets or limits, and charts any intake metric over the last 7 days. Totals include data other apps
@@ -44,8 +48,8 @@ An iPhone + Apple Watch app for manually logging health data that Apple Watch do
   - *Log Water* and *Log Metric* controls for Control Center and the buttons at the bottom of the Lock Screen.
     Log Metric opens the entry screen for the metric you pick.
 - **Siri and Shortcuts** (iPhone and Apple Watch):
-  - *Log Water*: "Log water in Vitals Log" logs a glass in your unit. In Shortcuts you can set any amount
-    and unit.
+  - *Log Water*: "Log water in Vitals Log" logs a glass (your smallest water preset) in your unit. In Shortcuts you
+    can set any amount and unit.
   - *Log Water Serving*: "Log 16 ounces of water in Vitals Log" (or 8, 12, 20, 24 or 32 oz, 250, 330, 500 or
     750 mL, or a liter) logs it in one sentence. Siri phrases can't hold any number, only choices from a list.
   - *Log Metric*: "Log my weight in Vitals Log" (or blood glucose, caffeine, or any other metric logged as a
