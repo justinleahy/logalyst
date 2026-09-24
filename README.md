@@ -21,7 +21,7 @@ An iPhone + Apple Watch app for manually logging health data that Apple Watch do
   Presets are kept per unit, so a 330 mL preset doesn't show when you enter fl oz. The Water widget's buttons use
   your first water presets, and they're edited on the iPhone and sent to the Watch.
 - **Nutrition** tab tracks today's water against a daily goal (with a progress ring and a
-  list of today's water to fix mistakes), shows calories, macros, sugar, fiber and caffeine against daily
+  list of today's water to tap and fix or swipe away), shows calories, macros, sugar, fiber and caffeine against daily
   targets or limits, and charts any intake metric over the last 7 days. Totals include data other apps
   save to Health. Tap the target button to edit goals.
 - **Suggest Goals:** in the goals sheet, estimates calories, protein, carbs, fat, sugar and fiber from your weight,
@@ -38,7 +38,9 @@ An iPhone + Apple Watch app for manually logging health data that Apple Watch do
   barcode to jump straight to a saved food, or to fill in a new one from
   [Open Food Facts](https://world.openfoodfacts.org), a free, open food database. You can also type the number
   if the camera can't read it. Saved foods live on the iPhone only.
-- **History** tab lists everything logged from either device; swipe to delete.
+- **History** tab lists everything logged from either device; swipe to delete, or tap an entry to fix it. Health
+  can't change a saved entry, so editing saves the corrected one and then deletes the original. Foods can only be
+  deleted.
 - **Widgets** (iPhone Home Screen, Lock Screen and Control Center):
   - *Water*: today's water against your goal, with buttons that log a glass without opening the app.
   - *Nutrition*: calories and nutrients against your daily goals. On the Lock Screen it shows a calorie gauge,

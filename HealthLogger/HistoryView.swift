@@ -13,15 +13,11 @@ struct HistoryView: View {
                 ForEach(groupedByDay, id: \.day) { group in
                     Section(group.day.formatted(date: .complete, time: .omitted)) {
                         ForEach(group.entries) { entry in
-                            HStack {
-                                Label(entry.title, systemImage: entry.systemImage)
-                                Spacer()
-                                VStack(alignment: .trailing) {
-                                    Text(entry.valueText).monospacedDigit()
-                                    Text(entry.date, style: .time)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
+                            // Foods aren't editable here; they're logged by the serving from My Foods.
+                            if entry.metric != nil {
+                                NavigationLink(value: entry) { row(for: entry) }
+                            } else {
+                                row(for: entry)
                             }
                         }
                         .onDelete { offsets in delete(offsets.map { group.entries[$0] }) }
@@ -35,6 +31,10 @@ struct HistoryView: View {
                 }
             }
             .navigationTitle("History")
+            // Tied to the value rather than the row, so the list reloading after the edit saves doesn't pop it early.
+            .navigationDestination(for: LoggedEntry.self) { entry in
+                if let metric = entry.metric { EntryView(metric: metric, editing: entry) }
+            }
             .toolbar { EditButton() }
             .refreshable { await reload() }
             .task(id: health.changeCount) { await reload() }
@@ -46,6 +46,19 @@ struct HistoryView: View {
                 Button("OK") { error = nil }
             } message: {
                 Text(error ?? "")
+            }
+        }
+    }
+
+    private func row(for entry: LoggedEntry) -> some View {
+        HStack {
+            Label(entry.title, systemImage: entry.systemImage)
+            Spacer()
+            VStack(alignment: .trailing) {
+                Text(entry.valueText).monospacedDigit()
+                Text(entry.date, style: .time)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
     }

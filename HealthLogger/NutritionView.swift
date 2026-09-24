@@ -37,6 +37,9 @@ struct NutritionView: View {
             }
             .navigationTitle("Nutrition")
             .navigationDestination(for: Metric.self) { EntryView(metric: $0) }
+            .navigationDestination(for: LoggedEntry.self) { entry in
+                if let metric = entry.metric { EntryView(metric: metric, editing: entry) }
+            }
             .toolbar {
                 Button("Goals", systemImage: "target") { editingGoals = true }
             }
@@ -90,17 +93,19 @@ struct NutritionView: View {
     private var waterLogSection: some View {
         Section {
             ForEach(waterToday) { entry in
-                HStack {
-                    Text(entry.date, style: .time)
-                    Spacer()
-                    Text(entry.valueText).monospacedDigit()
+                NavigationLink(value: entry) {
+                    HStack {
+                        Text(entry.date, style: .time)
+                        Spacer()
+                        Text(entry.valueText).monospacedDigit()
+                    }
                 }
             }
             .onDelete { offsets in delete(offsets.map { waterToday[$0] }) }
         } header: {
             Text("Water Logged Today")
         } footer: {
-            Text("Swipe to remove a mistaken entry. Totals also include water other apps save to Health.")
+            Text("Tap an entry to fix it, or swipe to remove it. Totals also include water other apps save to Health.")
         }
     }
 

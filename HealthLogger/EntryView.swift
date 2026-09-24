@@ -3,6 +3,8 @@ import HealthKit
 
 struct EntryView: View {
     let metric: Metric
+    /// An entry to change. Health can't edit a sample, so saving logs the new values and then deletes this one.
+    var editing: LoggedEntry?
 
     @Environment(HealthStore.self) private var health
     @Environment(\.dismiss) private var dismiss
@@ -20,6 +22,8 @@ struct EntryView: View {
     @State private var mealTime = BloodGlucoseMealTime.unspecified
     @State private var error: String?
     @State private var saved = false
+    /// The edit saved but the original couldn't be deleted, so leave after the alert rather than save it twice.
+    @State private var closeAfterError = false
     @FocusState private var focusedField: Field?
 
     private enum Field { case value, systolic, diastolic }
@@ -64,8 +68,11 @@ struct EntryView: View {
             }
         }
         .sensoryFeedback(.success, trigger: saved)
-        .alert("Couldn't Save", isPresented: .constant(error != nil)) {
-            Button("OK") { error = nil }
+        .alert(closeAfterError ? "Couldn't Remove Original" : "Couldn't Save", isPresented: .constant(error != nil)) {
+            Button("OK") {
+                error = nil
+                if closeAfterError { dismiss() }
+            }
         } message: {
             Text(error ?? "")
         }
@@ -253,6 +260,10 @@ struct EntryView: View {
     }
 
     private func prefill() async {
+        if let editing {
+            prefill(from: editing.sample)
+            return
+        }
         switch metric.kind {
         case .quantity:
             guard option == nil, let preferred = health.unitOption(for: metric) else { return }
@@ -273,29 +284,78 @@ struct EntryView: View {
         }
     }
 
+    /// Fills the form with a logged entry's values, in the unit the app shows it in.
+    private func prefill(from sample: HKSample) {
+        date = sample.startDate
+        switch metric.kind {
+        case .quantity:
+            guard let preferred = health.unitOption(for: metric),
+                  let quantity = (sample as? HKQuantitySample)?.quantity else { return }
+            option = preferred
+            value = preferred.displayValue(from: quantity)
+            let storedMealTime = sample.metadata?[HKMetadataKeyBloodGlucoseMealTime] as? Int
+            mealTime = BloodGlucoseMealTime.allCases.first { $0.healthKitValue?.rawValue == storedMealTime } ?? .unspecified
+            focusedField = .value
+        case .bloodPressure:
+            if let correlation = sample as? HKCorrelation, let values = health.bloodPressureValues(correlation) {
+                systolic = values.systolic
+                diastolic = values.diastolic
+            }
+            focusedField = .systolic
+        case .symptom:
+            if let category = sample as? HKCategorySample {
+                severity = Severity(healthKitValue: category.value) ?? .mild
+            }
+            hasDuration = sample.endDate > sample.startDate
+            endDate = sample.endDate
+        case .timedEvent:
+            // Timed events are entered by when they finished.
+            date = sample.endDate
+            duration = sample.endDate.timeIntervalSince(sample.startDate)
+        case .sexualActivity:
+            protection = Protection(metadata: sample.metadata)
+        }
+    }
+
     private func save() {
         Task {
             do {
-                switch metric.kind {
-                case .quantity:
-                    guard let option, let value else { return }
-                    try await health.saveQuantity(metric, value: value, option: option, date: date, mealTime: mealTime)
-                case .bloodPressure:
-                    guard let systolic, let diastolic else { return }
-                    try await health.saveBloodPressure(systolic: systolic, diastolic: diastolic, date: date)
-                case .symptom:
-                    try await health.saveSymptom(metric, severity: severity, start: date,
-                                                 end: hasDuration ? endDate : date)
-                case .timedEvent:
-                    try await health.saveTimedEvent(metric, duration: duration, end: date)
-                case .sexualActivity:
-                    try await health.saveSexualActivity(protection: protection, date: date)
-                }
-                saved.toggle()
-                dismiss()
+                try await saveEntry()
             } catch {
                 self.error = error.healthMessage
+                return
             }
+            // Deleting only after the new entry saved means a failure can leave a duplicate, never lose the entry.
+            if let editing {
+                do {
+                    try await health.delete(editing)
+                } catch {
+                    closeAfterError = true
+                    self.error = "The new entry was saved, but the original is still in Health, so History shows both. "
+                        + "Swipe to delete the one you don't want.\n\n\(error.healthMessage)"
+                    return
+                }
+            }
+            saved.toggle()
+            dismiss()
+        }
+    }
+
+    private func saveEntry() async throws {
+        switch metric.kind {
+        case .quantity:
+            guard let option, let value else { return }
+            try await health.saveQuantity(metric, value: value, option: option, date: date, mealTime: mealTime)
+        case .bloodPressure:
+            guard let systolic, let diastolic else { return }
+            try await health.saveBloodPressure(systolic: systolic, diastolic: diastolic, date: date)
+        case .symptom:
+            try await health.saveSymptom(metric, severity: severity, start: date,
+                                         end: hasDuration ? endDate : date)
+        case .timedEvent:
+            try await health.saveTimedEvent(metric, duration: duration, end: date)
+        case .sexualActivity:
+            try await health.saveSexualActivity(protection: protection, date: date)
         }
     }
 }

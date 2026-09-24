@@ -3,14 +3,19 @@ import Observation
 import WidgetKit
 
 /// A sample this app wrote, shaped for display in the history list.
-struct LoggedEntry: Identifiable {
+struct LoggedEntry: Identifiable, Hashable {
     let sample: HKSample
+    /// The metric it logs, or nil for a food.
+    let metric: Metric?
     let title: String
     let systemImage: String
     let valueText: String
 
     var id: UUID { sample.uuid }
     var date: Date { sample.startDate }
+
+    static func == (lhs: LoggedEntry, rhs: LoggedEntry) -> Bool { lhs.id == rhs.id }
+    func hash(into hasher: inout Hasher) { hasher.combine(id) }
 }
 
 /// One day's summed intake of a metric.
@@ -489,7 +494,7 @@ final class HealthStore {
         default:
             return nil
         }
-        return LoggedEntry(sample: sample, title: metric.name, systemImage: metric.systemImage, valueText: text)
+        return LoggedEntry(sample: sample, metric: metric, title: metric.name, systemImage: metric.systemImage, valueText: text)
     }
 
     private func foodEntry(_ food: HKCorrelation) -> LoggedEntry {
@@ -497,7 +502,7 @@ final class HealthStore {
         let calories = (food.objects(for: HKQuantityType(.dietaryEnergyConsumed)).first as? HKQuantitySample)?
             .quantity.doubleValue(for: .kilocalorie())
         let text = calories.map { "\($0.formatted(.number.precision(.fractionLength(0)))) kcal" } ?? "Logged"
-        return LoggedEntry(sample: food, title: name, systemImage: "fork.knife", valueText: text)
+        return LoggedEntry(sample: food, metric: nil, title: name, systemImage: "fork.knife", valueText: text)
     }
 
     func bloodPressureValues(_ correlation: HKCorrelation) -> (systolic: Double, diastolic: Double)? {
