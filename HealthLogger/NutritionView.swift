@@ -109,19 +109,35 @@ struct NutritionView: View {
         }
     }
 
+    /// Today's food by meal, then the buttons to add more.
+    @ViewBuilder
     private var foodSection: some View {
-        Section {
-            ForEach(foodToday) { entry in
-                HStack {
-                    VStack(alignment: .leading) {
-                        Text(entry.title)
-                        Text(entry.date, style: .time).font(.caption).foregroundStyle(.secondary)
+        ForEach(Meal.allCases) { meal in
+            let entries = foodToday.filter { $0.meal == meal }
+            if !entries.isEmpty {
+                Section {
+                    ForEach(entries) { entry in
+                        HStack {
+                            VStack(alignment: .leading) {
+                                Text(entry.title)
+                                Text(entry.date, style: .time).font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Text(entry.valueText).monospacedDigit().foregroundStyle(.secondary)
+                        }
+                        .logAgainActions(entry, in: health) { self.error = $0 }
                     }
-                    Spacer()
-                    Text(entry.valueText).monospacedDigit().foregroundStyle(.secondary)
+                    .onDelete { offsets in delete(offsets.map { entries[$0] }) }
+                } header: {
+                    HStack {
+                        Label(meal.title, systemImage: meal.systemImage)
+                        Spacer()
+                        Text(calories(of: entries)).monospacedDigit()
+                    }
                 }
             }
-            .onDelete { offsets in delete(offsets.map { foodToday[$0] }) }
+        }
+        Section {
             NavigationLink {
                 FoodLibraryView()
             } label: {
@@ -133,12 +149,17 @@ struct NutritionView: View {
                 Label("Scan Barcode", systemImage: "barcode.viewfinder")
             }
         } header: {
-            Text("Food")
+            if foodToday.isEmpty { Text("Food") }
         } footer: {
             if !foodToday.isEmpty {
-                Text("Swipe to remove a food. Its nutrients are removed from Health too.")
+                Text("Swipe left to remove a food (its nutrients are removed from Health too), or right to log it again.")
             }
         }
+    }
+
+    private func calories(of entries: [LoggedEntry]) -> String {
+        let total = entries.compactMap(\.food?.calories).reduce(0, +)
+        return "\(total.formatted(.number.precision(.fractionLength(0)))) kcal"
     }
 
     private func nutrientSection(_ title: String, metrics: [Metric]) -> some View {

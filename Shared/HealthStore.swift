@@ -10,6 +10,10 @@ struct LoggedEntry: Identifiable, Hashable {
     let title: String
     let systemImage: String
     let valueText: String
+    /// For a food, what was eaten, so it can be logged again.
+    var food: FoodPortion?
+    /// For a food, the meal it was saved under, or the usual meal for its time if it was saved without one.
+    var meal: Meal?
 
     var id: UUID { sample.uuid }
     var date: Date { sample.startDate }
@@ -73,6 +77,11 @@ enum BloodGlucoseMealTime: Int, CaseIterable, Identifiable {
 final class HealthStore {
     /// Tags every sample this app (phone or watch) writes, so history can find entries from both.
     static let entryMetadataKey = "HealthLoggerEntry"
+    /// Extra details saved on food entries, so a past entry can be logged again as it was.
+    private static let mealMetadataKey = "HealthLoggerMeal"
+    private static let servingsMetadataKey = "HealthLoggerServings"
+    private static let servingSizeMetadataKey = "HealthLoggerServingSize"
+    private static let brandMetadataKey = "HealthLoggerBrand"
 
     let isAvailable = HKHealthStore.isHealthDataAvailable()
     private(set) var preferredUnits: [HKQuantityType: HKUnit] = [:]
@@ -351,22 +360,33 @@ final class HealthStore {
         didChange()
     }
 
-    /// Saves a food as one Health food entry, so Health shows it by name alongside its nutrients.
-    /// Amounts are in each metric's first unit option; zero amounts are skipped.
-    func saveFood(named name: String, amounts: [(metric: Metric, value: Double)], date: Date) async throws {
+    /// Saves each food as one Health food entry, so Health shows it by name alongside its nutrients.
+    /// Foods with nothing to log are skipped.
+    func saveFoods(_ foods: [FoodPortion], meal: Meal, date: Date) async throws {
+        let entries = foods.compactMap { foodEntry(for: $0, meal: meal, date: date) }
+        guard !entries.isEmpty else { return }
+        try await save(entries)
+    }
+
+    private func foodEntry(for food: FoodPortion, meal: Meal, date: Date) -> HKCorrelation? {
         // Only the food entry is tagged as ours, so history lists the food once rather than per nutrient.
-        let nutrientMetadata: [String: Any] = [HKMetadataKeyWasUserEntered: true, HKMetadataKeyFoodType: name]
-        let samples = amounts.compactMap { metric, value -> HKSample? in
-            guard value > 0, case .quantity(let id, let options) = metric.kind, let unit = options.first else { return nil }
-            return HKQuantitySample(type: HKQuantityType(id), quantity: unit.quantity(fromDisplay: value),
+        let nutrientMetadata: [String: Any] = [HKMetadataKeyWasUserEntered: true, HKMetadataKeyFoodType: food.name]
+        let samples = food.nutrients.keys.sorted().compactMap { id -> HKSample? in
+            let value = food.amount(of: id)
+            guard value > 0, let metric = Metric.metric(id: id), case .quantity(let type, let options) = metric.kind,
+                  let unit = options.first else { return nil }
+            return HKQuantitySample(type: HKQuantityType(type), quantity: unit.quantity(fromDisplay: value),
                                     start: date, end: date, metadata: nutrientMetadata)
         }
-        guard !samples.isEmpty else { return }
+        guard !samples.isEmpty else { return nil }
         var metadata = baseMetadata
-        metadata[HKMetadataKeyFoodType] = name
-        let food = HKCorrelation(type: HKCorrelationType(.food), start: date, end: date,
-                                 objects: Set(samples), metadata: metadata)
-        try await save([food])
+        metadata[HKMetadataKeyFoodType] = food.name
+        metadata[Self.mealMetadataKey] = meal.rawValue
+        metadata[Self.servingsMetadataKey] = food.servings
+        if !food.servingSize.isEmpty { metadata[Self.servingSizeMetadataKey] = food.servingSize }
+        if !food.brand.isEmpty { metadata[Self.brandMetadataKey] = food.brand }
+        return HKCorrelation(type: HKCorrelationType(.food), start: date, end: date,
+                             objects: Set(samples), metadata: metadata)
     }
 
     // MARK: Reading
@@ -498,11 +518,25 @@ final class HealthStore {
     }
 
     private func foodEntry(_ food: HKCorrelation) -> LoggedEntry {
-        let name = food.metadata?[HKMetadataKeyFoodType] as? String ?? "Food"
-        let calories = (food.objects(for: HKQuantityType(.dietaryEnergyConsumed)).first as? HKQuantitySample)?
-            .quantity.doubleValue(for: .kilocalorie())
-        let text = calories.map { "\($0.formatted(.number.precision(.fractionLength(0)))) kcal" } ?? "Logged"
-        return LoggedEntry(sample: food, metric: nil, title: name, systemImage: "fork.knife", valueText: text)
+        let metadata = food.metadata ?? [:]
+        let name = metadata[HKMetadataKeyFoodType] as? String ?? "Food"
+        // Entries saved before servings were recorded count as one serving of what was eaten.
+        let servings = (metadata[Self.servingsMetadataKey] as? NSNumber)?.doubleValue ?? 1
+        var totals: [String: Double] = [:]
+        for case let sample as HKQuantitySample in food.objects {
+            guard let metric = Metric.metric(for: sample.quantityType),
+                  case .quantity(_, let options) = metric.kind, let unit = options.first else { continue }
+            totals[metric.id, default: 0] += unit.displayValue(from: sample.quantity)
+        }
+        let portion = FoodPortion(
+            name: name, brand: metadata[Self.brandMetadataKey] as? String ?? "",
+            servingSize: metadata[Self.servingSizeMetadataKey] as? String ?? "",
+            nutrients: servings > 0 ? totals.mapValues { $0 / servings } : totals, servings: servings > 0 ? servings : 1)
+        let meal = (metadata[Self.mealMetadataKey] as? String).flatMap(Meal.init(rawValue:)) ?? Meal(at: food.startDate)
+        let text = totals["dietaryEnergyConsumed"].map { "\($0.formatted(.number.precision(.fractionLength(0)))) kcal" }
+            ?? "Logged"
+        return LoggedEntry(sample: food, metric: nil, title: name, systemImage: "fork.knife", valueText: text,
+                           food: portion, meal: meal)
     }
 
     func bloodPressureValues(_ correlation: HKCorrelation) -> (systolic: Double, diastolic: Double)? {

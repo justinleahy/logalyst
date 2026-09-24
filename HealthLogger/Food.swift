@@ -13,6 +13,8 @@ final class Food {
     var nutrients: [String: Double]
     var created: Date
     var lastLogged: Date?
+    /// Favorites sort to the top of My Foods.
+    var isFavorite: Bool = false
 
     init(_ draft: FoodDraft) {
         name = ""
@@ -35,8 +37,9 @@ final class Food {
         FoodDraft(name: name, brand: brand, servingSize: servingSize, barcode: barcode, nutrients: nutrients)
     }
 
-    func amount(of metric: Metric) -> Double {
-        nutrients[metric.id] ?? 0
+    /// One serving, ready to log.
+    var portion: FoodPortion {
+        FoodPortion(name: name, brand: brand, servingSize: servingSize, nutrients: nutrients)
     }
 
     /// "Brand · 1 cup · 150 kcal", skipping whatever is missing.
@@ -130,6 +133,15 @@ enum FoodDatabase {
         case let number as NSNumber: number.doubleValue
         case let string as String: Double(string)
         default: nil
+        }
+    }
+}
+
+extension Food {
+    /// Marks the saved foods matching these portions as just logged, so they move up in My Foods.
+    @MainActor static func markLogged(_ portions: [FoodPortion], among foods: [Food]) {
+        for food in foods where portions.contains(where: { $0.isSameFood(as: food.portion) }) {
+            food.lastLogged = .now
         }
     }
 }

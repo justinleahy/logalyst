@@ -6,13 +6,24 @@ import AVFoundation
 
 // MARK: - Library
 
-/// Saved foods, most recently logged first.
+/// Where foods are logged from: recent meals and foods to log again in one tap, then saved foods,
+/// favorites first and then most recently logged.
 struct FoodLibraryView: View {
     @Environment(\.modelContext) private var context
+    @Environment(HealthStore.self) private var health
     @Query(sort: \Food.name) private var foods: [Food]
     @State private var search = ""
     @State private var editor: EditorTarget?
     @State private var scanning = false
+    @State private var recentFoods: [FoodPortion] = []
+    @State private var recentMeals: [RecentMeal] = []
+    /// Recent foods and meals logged a moment ago with their quick-log button, to show a checkmark.
+    @State private var justLogged: Set<String> = []
+    @State private var error: String?
+
+    private static let recentFoodLimit = 8
+    private static let recentMealLimit = 3
+    private static let recentDays = 30
 
     private enum EditorTarget: Identifiable {
         case new
@@ -25,25 +36,28 @@ struct FoodLibraryView: View {
 
     var body: some View {
         List {
-            ForEach(visibleFoods) { food in
-                NavigationLink {
-                    LogFoodView(food: food)
-                } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(food.name)
-                        if !food.summary.isEmpty {
-                            Text(food.summary).font(.caption).foregroundStyle(.secondary)
-                        }
+            if search.isEmpty {
+                if !recentMeals.isEmpty {
+                    Section("Recent Meals") {
+                        ForEach(recentMeals) { recentMealRow($0) }
                     }
                 }
-                .swipeActions {
-                    Button("Delete", systemImage: "trash", role: .destructive) { context.delete(food) }
-                    Button("Edit", systemImage: "pencil") { editor = .edit(food) }
+                if !recentFoods.isEmpty {
+                    Section {
+                        ForEach(recentFoods) { recentFoodRow($0) }
+                    } header: {
+                        Text("Recent")
+                    } footer: {
+                        Text("Tap \(Image(systemName: "plus.circle")) to log it again now, as much as last time.")
+                    }
                 }
+            }
+            Section(foods.isEmpty ? "" : "My Foods") {
+                ForEach(visibleFoods) { savedFoodRow($0) }
             }
         }
         .overlay {
-            if foods.isEmpty {
+            if foods.isEmpty && recentFoods.isEmpty {
                 ContentUnavailableView {
                     Label("No Foods Yet", systemImage: "fork.knife")
                 } description: {
@@ -52,12 +66,12 @@ struct FoodLibraryView: View {
                     Button("Scan Barcode") { scanning = true }.buttonStyle(.borderedProminent)
                     Button("New Food") { editor = .new }
                 }
-            } else if visibleFoods.isEmpty {
+            } else if !search.isEmpty && visibleFoods.isEmpty {
                 ContentUnavailableView.search(text: search)
             }
         }
-        .searchable(text: $search, prompt: "Search Foods")
-        .navigationTitle("My Foods")
+        .searchable(text: $search, prompt: "Search My Foods")
+        .navigationTitle("Add Food")
         .toolbar {
             Button("Scan Barcode", systemImage: "barcode.viewfinder") { scanning = true }
             Button("New Food", systemImage: "plus") { editor = .new }
@@ -71,17 +85,210 @@ struct FoodLibraryView: View {
             }
         }
         .sheet(isPresented: $scanning) { ScanFoodView() }
+        .task(id: health.changeCount) { await loadRecents() }
+        .sensoryFeedback(.success, trigger: justLogged.count) { old, new in new > old }
+        .alert("Couldn't Save", isPresented: .constant(error != nil)) {
+            Button("OK") { error = nil }
+        } message: {
+            Text(error ?? "")
+        }
     }
+
+    // MARK: Rows
+
+    private func recentMealRow(_ recent: RecentMeal) -> some View {
+        NavigationLink {
+            LogMealView(title: recent.meal.title, portions: recent.foods, meal: recent.meal)
+        } label: {
+            HStack {
+                Label {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(recent.meal.title), \(recent.dayText)")
+                        Text(recent.summary).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                    }
+                } icon: {
+                    Image(systemName: recent.meal.systemImage)
+                }
+                Spacer()
+                quickLogButton(key: recent.id, label: "Log \(recent.meal.title) Again") {
+                    try await health.saveFoods(recent.foods, meal: recent.meal, date: .now)
+                    Food.markLogged(recent.foods, among: foods)
+                }
+            }
+        }
+    }
+
+    private func recentFoodRow(_ portion: FoodPortion) -> some View {
+        NavigationLink {
+            LogFoodView(portion, food: foods.first { $0.portion.isSameFood(as: portion) })
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(portion.name)
+                    Text(portion.summary).font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                quickLogButton(key: portion.identityKey, label: "Log \(portion.name) Again") {
+                    try await health.saveFoods([portion], meal: Meal(at: .now), date: .now)
+                    Food.markLogged([portion], among: foods)
+                }
+            }
+        }
+    }
+
+    private func savedFoodRow(_ food: Food) -> some View {
+        NavigationLink {
+            LogFoodView(food: food)
+        } label: {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 4) {
+                    Text(food.name)
+                    if food.isFavorite {
+                        Image(systemName: "star.fill")
+                            .font(.caption)
+                            .foregroundStyle(.yellow)
+                            .accessibilityLabel("Favorite")
+                    }
+                }
+                if !food.summary.isEmpty {
+                    Text(food.summary).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        }
+        .swipeActions(edge: .leading) {
+            Button(food.isFavorite ? "Unfavorite" : "Favorite",
+                   systemImage: food.isFavorite ? "star.slash" : "star") { food.isFavorite.toggle() }
+                .tint(.yellow)
+        }
+        .swipeActions {
+            Button("Delete", systemImage: "trash", role: .destructive) { context.delete(food) }
+            Button("Edit", systemImage: "pencil") { editor = .edit(food) }
+        }
+    }
+
+    /// Logs without opening the food, then shows a checkmark for a moment.
+    private func quickLogButton(key: String, label: String, log: @escaping () async throws -> Void) -> some View {
+        let logged = justLogged.contains(key)
+        return Button {
+            Task {
+                do {
+                    try await log()
+                    justLogged.insert(key)
+                    try? await Task.sleep(for: .seconds(2))
+                    justLogged.remove(key)
+                } catch {
+                    self.error = error.healthMessage
+                }
+            }
+        } label: {
+            Image(systemName: logged ? "checkmark.circle.fill" : "plus.circle")
+                .font(.title2)
+                .foregroundStyle(logged ? .green : .accentColor)
+                .contentTransition(.symbolEffect(.replace))
+        }
+        .buttonStyle(.borderless)
+        .disabled(logged)
+        .accessibilityLabel(logged ? "Logged" : label)
+    }
+
+    // MARK: Data
 
     private var visibleFoods: [Food] {
         let matches = search.isEmpty ? foods : foods.filter {
             $0.name.localizedStandardContains(search) || $0.brand.localizedStandardContains(search)
         }
-        // Recently logged first, then alphabetical (the query's order) for the rest.
+        // Favorites, then recently logged, then alphabetical (the query's order) for the rest.
         return matches.enumerated().sorted { a, b in
+            if a.element.isFavorite != b.element.isFavorite { return a.element.isFavorite }
             let (dateA, dateB) = (a.element.lastLogged ?? .distantPast, b.element.lastLogged ?? .distantPast)
             return dateA != dateB ? dateA > dateB : a.offset < b.offset
         }.map(\.element)
+    }
+
+    private func loadRecents() async {
+        let since = Calendar.current.date(byAdding: .day, value: -Self.recentDays, to: .now)!
+        // Recents are a shortcut, so if Health can't be read (such as while locked) just keep what's showing.
+        guard let entries = try? await health.recentEntries(of: [], since: since, limit: 500) else { return }
+
+        var foods: [FoodPortion] = []
+        for case let food? in entries.map(\.food) where !foods.contains(where: { $0.isSameFood(as: food) }) {
+            foods.append(food)
+            if foods.count == Self.recentFoodLimit { break }
+        }
+        recentFoods = foods
+
+        // Meals of two or more foods, newest first, skipping repeats of the same foods at the same meal.
+        let calendar = Calendar.current
+        var meals: [RecentMeal] = []
+        var seen: Set<String> = []
+        let groups = Dictionary(grouping: entries.filter { $0.food != nil && $0.meal != nil }) {
+            MealKey(day: calendar.startOfDay(for: $0.date), meal: $0.meal!)
+        }
+        for key in groups.keys.sorted(by: { $0.day != $1.day ? $0.day > $1.day : $0.meal.sortOrder > $1.meal.sortOrder }) {
+            let entries = groups[key]!.sorted { $0.date < $1.date }
+            guard entries.count >= 2 else { continue }
+            let meal = RecentMeal(day: key.day, meal: key.meal, foods: entries.compactMap(\.food))
+            guard seen.insert(meal.id).inserted else { continue }
+            meals.append(meal)
+            if meals.count == Self.recentMealLimit { break }
+        }
+        recentMeals = meals
+    }
+
+    private struct MealKey: Hashable {
+        let day: Date
+        let meal: Meal
+    }
+}
+
+/// The foods eaten at one meal on one day.
+private struct RecentMeal: Identifiable {
+    let day: Date
+    let meal: Meal
+    let foods: [FoodPortion]
+
+    /// The meal and which foods, so the same breakfast on two days shows once.
+    var id: String {
+        meal.rawValue + ":" + foods.map(\.identityKey).sorted().joined(separator: "|")
+    }
+
+    var dayText: String {
+        let calendar = Calendar.current
+        if calendar.isDateInToday(day) { return "Today" }
+        if calendar.isDateInYesterday(day) { return "Yesterday" }
+        return day.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())
+    }
+
+    /// "Oatmeal, Coffee · 520 kcal"
+    var summary: String {
+        let calories = foods.map(\.calories).reduce(0, +)
+        return foods.map(\.name).joined(separator: ", ") + " · " + formatCalories(calories)
+    }
+}
+
+private extension Meal {
+    var sortOrder: Int { Meal.allCases.firstIndex(of: self)! }
+}
+
+private func formatCalories(_ calories: Double) -> String {
+    "\(calories.formatted(.number.precision(.fractionLength(0)))) kcal"
+}
+
+extension FoodPortion {
+    /// Stays the same when the food is logged again, unlike `id`.
+    var identityKey: String {
+        name.lowercased() + "\u{1F}" + brand.lowercased()
+    }
+
+    /// "Brand · 2 × 1 cup · 300 kcal", skipping whatever is missing.
+    var summary: String {
+        let count = servings.formatted(.number.precision(.fractionLength(0...2)))
+        let amount = if servingSize.isEmpty {
+            servings == 1 ? "1 serving" : "\(count) servings"
+        } else {
+            servings == 1 ? servingSize : "\(count) × \(servingSize)"
+        }
+        return [brand, amount, formatCalories(calories)].filter { !$0.isEmpty }.joined(separator: " · ")
     }
 }
 
@@ -95,60 +302,63 @@ private extension View {
 
 // MARK: - Logging
 
+/// Logs one food, by the serving.
 struct LogFoodView: View {
-    let food: Food
+    /// The saved food this came from, if any, which moves up in My Foods once logged.
+    let food: Food?
     /// Called after saving; pops this screen when nil.
     var onSaved: (() -> Void)?
 
     @Environment(HealthStore.self) private var health
     @Environment(\.dismiss) private var dismiss
-    @State private var servings = 1.0
+    @State private var portion: FoodPortion
+    @State private var meal = Meal(at: .now)
+    /// Once the user picks a meal, changing the time no longer changes it.
+    @State private var mealChosen = false
     @State private var date = Date.now
     @State private var error: String?
     @State private var isSaving = false
     @State private var saved = false
 
+    init(food: Food, onSaved: (() -> Void)? = nil) {
+        self.init(food.portion, food: food, onSaved: onSaved)
+    }
+
+    init(_ portion: FoodPortion, food: Food? = nil, onSaved: (() -> Void)? = nil) {
+        self.food = food
+        self.onSaved = onSaved
+        _portion = State(initialValue: portion)
+    }
+
     var body: some View {
         Form {
             Section {
-                if !food.servingSize.isEmpty {
-                    LabeledContent("Serving Size", value: food.servingSize)
+                if !portion.servingSize.isEmpty {
+                    LabeledContent("Serving Size", value: portion.servingSize)
                 }
                 HStack {
                     Text("Servings")
                     Spacer()
-                    TextField("1", value: $servings, format: .number.precision(.fractionLength(0...2)))
+                    TextField("1", value: $portion.servings, format: .number.precision(.fractionLength(0...2)))
                         .keyboardType(.decimalPad)
                         .multilineTextAlignment(.trailing)
                         .monospacedDigit()
                         .frame(maxWidth: 60)
-                    Stepper("Servings", value: $servings, in: 0.5...20, step: 0.5)
+                    Stepper("Servings", value: $portion.servings, in: 0.5...20, step: 0.5)
                         .labelsHidden()
                 }
             } header: {
-                if !food.brand.isEmpty { Text(food.brand) }
+                if !portion.brand.isEmpty { Text(portion.brand) }
             }
-            Section("Nutrition") {
-                ForEach(FoodNutrient.metrics.filter { food.amount(of: $0) > 0 }) { metric in
-                    if let option = metric.unitOptions.first {
-                        LabeledContent {
-                            Text(option.format(food.amount(of: metric) * servings)).monospacedDigit()
-                        } label: {
-                            Label(metric.name, systemImage: metric.systemImage)
-                        }
-                    }
-                }
-            }
-            Section {
-                DatePicker("Date & Time", selection: $date, in: ...Date.now)
-            }
+            NutritionTotals(portions: [portion])
+            MealAndTimeSection(meal: $meal, mealChosen: $mealChosen, date: $date)
         }
         .scrollDismissesKeyboard(.interactively)
-        .navigationTitle(food.name)
+        .navigationTitle(portion.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                Button("Log", action: save).disabled(isSaving || servings <= 0)
+                Button("Log", action: save).disabled(isSaving || portion.servings <= 0)
             }
         }
         .sensoryFeedback(.success, trigger: saved)
@@ -164,14 +374,138 @@ struct LogFoodView: View {
         Task {
             defer { isSaving = false }
             do {
-                let amounts = FoodNutrient.metrics.map { ($0, food.amount(of: $0) * servings) }
-                try await health.saveFood(named: food.name, amounts: amounts, date: date)
-                food.lastLogged = .now
+                try await health.saveFoods([portion], meal: meal, date: date)
+                food?.lastLogged = .now
                 saved.toggle()
                 if let onSaved { onSaved() } else { dismiss() }
             } catch {
                 self.error = error.healthMessage
             }
+        }
+    }
+}
+
+/// Logs several foods at once, such as a meal eaten before. Each is saved as its own food entry.
+struct LogMealView: View {
+    let title: String
+    /// Called after saving; pops this screen when nil.
+    var onSaved: (() -> Void)?
+
+    @Environment(HealthStore.self) private var health
+    @Environment(\.dismiss) private var dismiss
+    @Query private var savedFoods: [Food]
+    @State private var portions: [FoodPortion]
+    @State private var meal: Meal
+    @State private var mealChosen: Bool
+    @State private var date = Date.now
+    @State private var error: String?
+    @State private var isSaving = false
+    @State private var saved = false
+
+    /// With no meal, it defaults to the usual one for the time.
+    init(title: String, portions: [FoodPortion], meal: Meal? = nil, onSaved: (() -> Void)? = nil) {
+        self.title = title
+        self.onSaved = onSaved
+        _portions = State(initialValue: portions)
+        _meal = State(initialValue: meal ?? Meal(at: .now))
+        _mealChosen = State(initialValue: meal != nil)
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                ForEach($portions) { $portion in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(portion.name)
+                                .foregroundStyle(portion.servings > 0 ? .primary : .secondary)
+                            Text(portion.servings > 0 ? portion.summary : "Left out")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Stepper("Servings of \(portion.name)", value: $portion.servings, in: 0...20, step: 0.5)
+                            .labelsHidden()
+                    }
+                }
+            } header: {
+                Text("Foods")
+            } footer: {
+                Text("Set a food to 0 servings to leave it out.")
+            }
+            NutritionTotals(portions: included)
+            MealAndTimeSection(meal: $meal, mealChosen: $mealChosen, date: $date)
+        }
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Log", action: save).disabled(isSaving || included.isEmpty)
+            }
+        }
+        .sensoryFeedback(.success, trigger: saved)
+        .alert("Couldn't Save", isPresented: .constant(error != nil)) {
+            Button("OK") { error = nil }
+        } message: {
+            Text(error ?? "")
+        }
+    }
+
+    private var included: [FoodPortion] {
+        portions.filter { $0.servings > 0 }
+    }
+
+    private func save() {
+        isSaving = true
+        Task {
+            defer { isSaving = false }
+            do {
+                try await health.saveFoods(included, meal: meal, date: date)
+                Food.markLogged(included, among: savedFoods)
+                saved.toggle()
+                if let onSaved { onSaved() } else { dismiss() }
+            } catch {
+                self.error = error.healthMessage
+            }
+        }
+    }
+}
+
+/// What the portions add up to, per nutrient.
+private struct NutritionTotals: View {
+    let portions: [FoodPortion]
+
+    var body: some View {
+        Section("Nutrition") {
+            ForEach(FoodNutrient.metrics) { metric in
+                let total = portions.map { $0.amount(of: metric.id) }.reduce(0, +)
+                if total > 0, let option = metric.unitOptions.first {
+                    LabeledContent {
+                        Text(option.format(total)).monospacedDigit()
+                    } label: {
+                        Label(metric.name, systemImage: metric.systemImage)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Meal and time pickers. The meal follows the time until the user picks one.
+private struct MealAndTimeSection: View {
+    @Binding var meal: Meal
+    @Binding var mealChosen: Bool
+    @Binding var date: Date
+
+    var body: some View {
+        Section {
+            Picker("Meal", selection: Binding { meal } set: { meal = $0; mealChosen = true }) {
+                ForEach(Meal.allCases) { Label($0.title, systemImage: $0.systemImage).tag($0) }
+            }
+            DatePicker("Date & Time", selection: $date, in: ...Date.now)
+        }
+        .onChange(of: date) { _, date in
+            if !mealChosen { meal = Meal(at: date) }
         }
     }
 }
@@ -400,6 +734,51 @@ private struct BarcodeScanner: UIViewControllerRepresentable {
                     onScan(value)
                     return
                 }
+            }
+        }
+    }
+}
+
+// MARK: - Log again
+
+extension View {
+    /// For a food entry, a swipe and a menu item that log the same food again now.
+    /// Reports a failure through `onError`.
+    func logAgainActions(_ entry: LoggedEntry, in health: HealthStore,
+                         onError: @escaping (String) -> Void) -> some View {
+        modifier(LogAgainActions(food: entry.food, health: health, onError: onError))
+    }
+}
+
+private struct LogAgainActions: ViewModifier {
+    let food: FoodPortion?
+    let health: HealthStore
+    let onError: (String) -> Void
+
+    @State private var logged = false
+
+    func body(content: Content) -> some View {
+        if let food {
+            content
+                .swipeActions(edge: .leading) {
+                    Button("Log Again", systemImage: "arrow.clockwise") { log(food) }.tint(.accentColor)
+                }
+                .contextMenu {
+                    Button("Log Again", systemImage: "arrow.clockwise") { log(food) }
+                }
+                .sensoryFeedback(.success, trigger: logged)
+        } else {
+            content
+        }
+    }
+
+    private func log(_ food: FoodPortion) {
+        Task {
+            do {
+                try await health.saveFoods([food], meal: Meal(at: .now), date: .now)
+                logged.toggle()
+            } catch {
+                onError(error.healthMessage)
             }
         }
     }

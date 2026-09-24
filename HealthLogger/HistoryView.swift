@@ -17,7 +17,7 @@ struct HistoryView: View {
                             if entry.metric != nil {
                                 NavigationLink(value: entry) { row(for: entry) }
                             } else {
-                                row(for: entry)
+                                row(for: entry).logAgainActions(entry, in: health) { self.error = $0 }
                             }
                         }
                         .onDelete { offsets in delete(offsets.map { group.entries[$0] }) }

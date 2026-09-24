@@ -46,13 +46,21 @@ An iPhone + Apple Watch app for manually logging health data that Apple Watch do
   activity, and doesn't change with the weight goal. It only suggests goals for adults, and nothing changes until
   you tap *Use These Goals*. The caffeine limit isn't touched.
 - **Foods:** save foods with their nutrition per serving (My Foods), then log them by the serving. Each one is
-  saved to Health as a single food entry, so Health shows it by name and History lists it once. Scan a
+  saved to Health as a single food entry, so Health shows it by name and History lists it once. Each food is
+  logged at a meal (breakfast, lunch, dinner or snack), which follows the time until you pick one, and the
+  Nutrition tab lists today's food by meal. Scan a
   barcode to jump straight to a saved food, or to fill in a new one from
   [Open Food Facts](https://world.openfoodfacts.org), a free, open food database. You can also type the number
   if the camera can't read it. Saved foods live on the iPhone only.
+- **Logging food again:** *Add Food* starts with your recent meals (two or more foods at the same meal) and the
+  foods you've logged in the last 30 days. Tap ⊕ to log one again now, as much as last time, or tap the row to
+  change the servings, meal or time first (a meal lets you leave foods out). Swipe right on a food in History
+  or the Nutrition tab (or touch and hold it) to log it again, and swipe right on a saved food to make it a
+  favorite, which keeps it at the top of My Foods. Recents come from Health, which also stores each entry's
+  servings, serving size, brand and meal, so they work even after the saved food is deleted.
 - **History** tab lists everything logged from either device; swipe to delete, or tap an entry to fix it. Health
-  can't change a saved entry, so editing saves the corrected one and then deletes the original. Foods can only be
-  deleted.
+  can't change a saved entry, so editing saves the corrected one and then deletes the original. Foods can't be
+  edited, only deleted or logged again.
 - **Widgets** (iPhone Home Screen, Lock Screen and Control Center):
   - *Water*: today's water against your goal, with buttons that log a glass without opening the app.
   - *Nutrition*: calories and nutrients against your daily goals. On the Lock Screen it shows a calorie gauge,
