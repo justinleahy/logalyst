@@ -23,6 +23,10 @@ With your permission, Vitals Log uses Apple Health (HealthKit) to:
 - **Read** that same kind of data to show your history, prefill your last reading, show today's totals and
   charts, and power the widgets and Watch complications. Nutrition totals include data that other apps have saved
   to Health.
+- **Suggest goals:** if you open Suggest Goals, read your height, weight, date of birth, sex and resting energy to
+  estimate daily calorie and nutrient goals. The estimate is worked out on your iPhone. Your activity level,
+  weight goal and whether to use resting energy are saved on the device; your measurements aren't saved anywhere
+  else.
 
 You choose which types of data Vitals Log can read and write, and you can change this at any time (see
 [Your choices](#your-choices)).

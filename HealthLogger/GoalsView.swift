@@ -10,6 +10,15 @@ struct GoalsView: View {
         NavigationStack {
             Form {
                 Section {
+                    NavigationLink {
+                        SuggestGoalsView()
+                    } label: {
+                        Label("Suggest Goals for Me", systemImage: "wand.and.sparkles")
+                    }
+                } footer: {
+                    Text("Estimates calories and nutrients from your height, weight, age and activity.")
+                }
+                Section {
                     ForEach(metrics) { metric in
                         if let option = health.unitOption(for: metric) {
                             goalField(metric, option: option)

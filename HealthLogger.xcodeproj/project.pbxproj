@@ -506,7 +506,7 @@
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Vitals Log uses the camera to scan food barcodes.";
-				INFOPLIST_KEY_NSHealthShareUsageDescription = "Vitals Log reads the entries you've logged so it can show your history and prefill your last reading.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Vitals Log reads the entries you've logged so it can show your history and prefill your last reading. If you ask it to suggest goals, it reads your height, weight, age, sex and resting energy to estimate them.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Vitals Log saves the measurements, intake, and symptoms you enter to Apple Health.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -540,7 +540,7 @@
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Vitals Log uses the camera to scan food barcodes.";
-				INFOPLIST_KEY_NSHealthShareUsageDescription = "Vitals Log reads the entries you've logged so it can show your history and prefill your last reading.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Vitals Log reads the entries you've logged so it can show your history and prefill your last reading. If you ask it to suggest goals, it reads your height, weight, age, sex and resting energy to estimate them.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Vitals Log saves the measurements, intake, and symptoms you enter to Apple Health.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;

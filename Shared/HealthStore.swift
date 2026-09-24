@@ -93,6 +93,15 @@ final class HealthStore {
         await loadPreferredUnits()
     }
 
+    /// Asks to read height, weight, age, sex and resting energy, only when the user opens Suggest Goals.
+    func requestProfileAuthorization() async throws {
+        guard isAvailable else { return }
+        try await store.requestAuthorization(toShare: [], read: [
+            HKQuantityType(.height), HKQuantityType(.bodyMass), HKQuantityType(.basalEnergyBurned),
+            HKCharacteristicType(.dateOfBirth), HKCharacteristicType(.biologicalSex),
+        ])
+    }
+
     func loadPreferredUnits() async {
         let types = Set(Metric.all.flatMap(\.sampleTypes).compactMap { $0 as? HKQuantityType })
         if let units = try? await store.preferredUnits(for: types) {
@@ -314,6 +323,39 @@ final class HealthStore {
         return bloodPressureValues(correlation)
     }
 
+    /// Most recent height in centimeters, from any source.
+    func latestHeightCm() async -> Double? {
+        let descriptor = HKSampleQueryDescriptor(
+            predicates: [.quantitySample(type: HKQuantityType(.height))],
+            sortDescriptors: [SortDescriptor(\.startDate, order: .reverse)],
+            limit: 1)
+        return try? await descriptor.result(for: store).first?.quantity.doubleValue(for: .meterUnit(with: .centi))
+    }
+
+    /// Typical resting energy burned a day, in kcal: the median of the last two weeks' full days that have any,
+    /// so days the Watch was off for a while don't drag it down. Nil with fewer than 3 days of data.
+    func typicalRestingEnergy() async -> Double? {
+        guard let totals = try? await dailyTotals(of: .basalEnergyBurned, days: 15) else { return nil }
+        // Drop today, which isn't over yet.
+        let days = totals.dropLast().compactMap { $0.sum?.doubleValue(for: .kilocalorie()) }.sorted()
+        guard days.count >= 3 else { return nil }
+        return days[days.count / 2]
+    }
+
+    /// The user's age from the birthday in their Health profile, or nil if it isn't set or can't be read.
+    func age() -> Int? {
+        guard let birthday = try? store.dateOfBirthComponents(), let date = Calendar.current.date(from: birthday) else {
+            return nil
+        }
+        return Calendar.current.dateComponents([.year], from: date, to: .now).year
+    }
+
+    /// The sex in the user's Health profile, or nil if it isn't set or can't be read.
+    func biologicalSex() -> HKBiologicalSex? {
+        guard let sex = try? store.biologicalSex().biologicalSex, sex != .notSet else { return nil }
+        return sex
+    }
+
     /// Newest sample of a metric from any source, or nil if there is none. Unlike `latestValue`, this throws
     /// when Health can't be read, such as while the device is locked.
     func latestSample(of metric: Metric) async throws -> HKSample? {
@@ -346,6 +388,10 @@ final class HealthStore {
     /// oldest first and ending today. Days with nothing logged have a nil sum.
     func dailyTotals(for metric: Metric, days: Int) async throws -> [DailyTotal] {
         guard case .quantity(let id, _) = metric.kind else { return [] }
+        return try await dailyTotals(of: id, days: days)
+    }
+
+    private func dailyTotals(of id: HKQuantityTypeIdentifier, days: Int) async throws -> [DailyTotal] {
         let calendar = Calendar.current
         let end = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: .now))!
         let start = calendar.date(byAdding: .day, value: -days, to: end)!

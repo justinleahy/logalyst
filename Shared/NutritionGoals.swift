@@ -34,6 +34,12 @@ final class NutritionGoals {
         save()
     }
 
+    /// Sets several goals at once, keyed by metric ID in each metric's first unit option.
+    func setGoals(_ canonicalAmounts: [String: Double]) {
+        amounts.merge(canonicalAmounts.filter { $0.value > 0 }) { $1 }
+        save()
+    }
+
     func resetToDefaults() {
         amounts = [:]
         save()

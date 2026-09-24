@@ -20,6 +20,15 @@ An iPhone + Apple Watch app for manually logging health data that Apple Watch do
   list of today's water to fix mistakes), shows calories, macros, sugar, fiber and caffeine against daily
   targets or limits, and charts any intake metric over the last 7 days. Totals include data other apps
   save to Health. Tap the target button to edit goals.
+- **Suggest Goals:** in the goals sheet, estimates calories, protein, carbs, fat, sugar and fiber from your weight,
+  height, age and sex (read from Health when set, otherwise typed in), activity level, and whether you want to
+  lose, maintain or gain weight. Calories burned at rest come from Apple Health's resting energy when there are at
+  least 3 days of it in the last two weeks (the median day, so days the Watch was off for a while don't lower it;
+  you can turn this off), otherwise from the Mifflin–St Jeor equation. Protein is 1.6 g/kg (1.2 g/kg to maintain),
+  capped at 35% of calories. Fat is 30% and carbs are the rest. Sugar stays under 10% and fiber is 14 g per
+  1,000 kcal. Losing weight takes off up to 500 kcal (never more than 20%, or below 1,200/1,500 kcal), and
+  gaining adds 300 kcal. It only suggests goals for adults, and nothing changes until you tap *Use These Goals*.
+  Water and caffeine goals aren't touched.
 - **Foods:** save foods with their nutrition per serving (My Foods), then log them by the serving. Each one is
   saved to Health as a single food entry, so Health shows it by name and History lists it once. Scan a
   barcode to jump straight to a saved food, or to fill in a new one from
