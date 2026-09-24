@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @Environment(HealthStore.self) private var health
+    @Environment(WaterReminders.self) private var reminders
     @State private var authError: String?
     @State private var tab = AppTab.log
     @State private var logPath: [Metric] = []
@@ -18,6 +19,14 @@ struct ContentView: View {
                     Tab("Options", systemImage: "gearshape", value: .options) { OptionsView() }
                 }
                 .onOpenURL(perform: open)
+                // Also checked on appear, for a tap that launched the app.
+                .onChange(of: reminders.openedLink, initial: true) { _, link in
+                    guard let link else { return }
+                    open(link.url)
+                    reminders.openedLink = nil
+                }
+                // Units and entries logged here change the reminders' text and timing.
+                .onChange(of: health.changeCount) { reminders.reschedule() }
             } else {
                 ContentUnavailableView("Health Unavailable", systemImage: "heart.slash",
                                        description: Text("Health data isn't available on this device."))
@@ -34,7 +43,7 @@ struct ContentView: View {
         }
     }
 
-    /// Handles links from widgets.
+    /// Handles links from widgets and water reminders.
     private func open(_ url: URL) {
         switch DeepLink(url: url) {
         case .log(let metric):

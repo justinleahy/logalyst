@@ -24,6 +24,12 @@ An iPhone + Apple Watch app for manually logging health data that Apple Watch do
   list of today's water to tap and fix or swipe away), shows calories, macros, sugar, fiber and caffeine against daily
   targets or limits, and charts any intake metric over the last 7 days. Totals include data other apps
   save to Health. Tap the target button to edit goals.
+- **Water reminders:** turn them on in the **Options** tab to get a notification when you haven't logged water
+  for a while (1 to 4 hours), between the times you pick. Water logged anywhere (the app, widgets, Siri, the Watch
+  or other apps) pushes the next reminder back, and they stop for the day once you reach your water goal (you can
+  turn that off). Touch and hold a reminder to log a glass (your smallest water preset) without opening the app,
+  or tap it to open Nutrition. Reminders are scheduled on the iPhone a few days ahead and show on the Watch while
+  the iPhone is locked.
 - **Suggest Goals:** in the goals sheet, estimates calories, protein, carbs, fat, sugar and fiber from your weight,
   height, age and sex (read from Health when set, otherwise typed in), activity level, and whether you want to
   lose, maintain or gain weight. Calories burned at rest come from Apple Health's resting energy when there are at

@@ -40,8 +40,11 @@ turned on iCloud syncing for Health, Apple handles that under
 
 Vitals Log keeps a few things in its own storage on your device:
 
-- **Settings:** your preferred units, daily goals and limits, and favorite metrics.
+- **Settings:** your preferred units, daily goals and limits, favorite metrics, and water reminder times.
 - **My Foods:** the foods you save, with their nutrition per serving and barcode. These stay on your iPhone.
+
+Water reminders are scheduled by your iPhone itself, not sent from a server. They can show how much water you have
+left to reach today's goal, which appears on your Lock Screen unless you hide notification previews in Settings.
 
 Your favorites and daily goals sync between your iPhone and Apple Watch directly over Apple's Watch connection.
 They don't go through any server.
