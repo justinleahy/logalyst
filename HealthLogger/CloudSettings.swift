@@ -69,7 +69,8 @@ final class CloudSettings {
     func sync() {
         guard let records = try? context.fetch(FetchDescriptor<SyncedSetting>()) else { return }
         let newest = removingDuplicates(records)
-        var synced = UserDefaults.standard.dictionary(forKey: Self.syncedKey) as? [String: Date] ?? [:]
+        let wasSynced = UserDefaults.standard.dictionary(forKey: Self.syncedKey) as? [String: Date] ?? [:]
+        var synced = wasSynced
         var changedHere = false
 
         for setting in Self.settings {
@@ -90,8 +91,10 @@ final class CloudSettings {
             }
         }
 
-        try? context.save()
-        UserDefaults.standard.set(synced, forKey: Self.syncedKey)
+        // Writes only what changed: saving and setting defaults post the notifications that schedule a sync,
+        // so an unconditional write would sync again every second forever.
+        if context.hasChanges { try? context.save() }
+        if synced != wasSynced { UserDefaults.standard.set(synced, forKey: Self.syncedKey) }
         if changedHere { onRemoteChange() }
     }
 
