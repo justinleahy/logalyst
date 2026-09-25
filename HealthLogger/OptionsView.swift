@@ -7,23 +7,31 @@ struct OptionsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                remindersSection
-                ForEach(MetricCategory.allCases) { category in
-                    let metrics = Metric.metrics(in: category).filter { $0.unitOptions.count > 1 }
-                    if !metrics.isEmpty {
-                        Section {
-                            ForEach(metrics) { unitPicker(for: $0) }
-                        } header: {
-                            Label(category.title, systemImage: category.systemImage)
+                Section {
+                    NavigationLink {
+                        LogRemindersView()
+                    } label: {
+                        LabeledContent {
+                            Text(reminderCount == 0 ? "Off" : "\(reminderCount) On")
+                        } label: {
+                            Label("Log Reminders", systemImage: "bell")
                         }
                     }
+                } footer: {
+                    Text("Get reminded to log water, blood pressure, weight or any other metric, on a schedule you choose.")
                 }
                 Section {
-                    Button("Use Automatic Units", action: resetUnits)
-                        .disabled(!hasOverrides)
+                    NavigationLink {
+                        UnitsView()
+                    } label: {
+                        LabeledContent {
+                            Text(customUnitCount == 0 ? "Automatic" : "\(customUnitCount) Custom")
+                        } label: {
+                            Label("Units", systemImage: "ruler")
+                        }
+                    }
                 } footer: {
-                    Text("Auto follows your unit preferences in the Health app, or your region if none are set. "
-                         + "Changing a unit here only affects how values are shown and entered on this iPhone.")
+                    Text("Choose how values are shown and entered, like kilograms or pounds.")
                 }
                 Section {
                     NavigationLink {
@@ -43,57 +51,15 @@ struct OptionsView: View {
         }
     }
 
-    private var remindersSection: some View {
-        let count = reminders.reminders.filter(\.isEnabled).count
-        return Section {
-            NavigationLink {
-                LogRemindersView()
-            } label: {
-                LabeledContent {
-                    Text(count == 0 ? "Off" : "\(count) On")
-                } label: {
-                    Label("Log Reminders", systemImage: "bell")
-                }
-            }
-        } footer: {
-            Text("Get reminded to log water, blood pressure, weight or any other metric, on a schedule you choose.")
-        }
+    private var reminderCount: Int {
+        reminders.reminders.filter(\.isEnabled).count
     }
 
-    private func unitPicker(for metric: Metric) -> some View {
-        let selection = Binding<UnitOption?> {
-            health.unitOverride(for: metric)
-        } set: {
-            health.setUnitOverride($0, for: metric)
-        }
-        return Picker(selection: selection) {
-            Text(automaticTitle(for: metric)).tag(UnitOption?.none)
-            ForEach(metric.unitOptions, id: \.self) { Text($0.label).tag(Optional($0)) }
-        } label: {
-            Label(metric.name, systemImage: metric.systemImage)
-        }
-    }
-
-    private func automaticTitle(for metric: Metric) -> String {
-        guard let option = health.automaticUnitOption(for: metric) else { return "Auto" }
-        return "Auto (\(option.label))"
+    private var customUnitCount: Int {
+        UnitsView.metrics.filter { health.unitOverride(for: $0) != nil }.count
     }
 
     private func bundleValue(_ key: String) -> String {
         Bundle.main.object(forInfoDictionaryKey: key) as? String ?? "—"
-    }
-
-    private var unitMetrics: [Metric] {
-        Metric.all.filter { $0.unitOptions.count > 1 }
-    }
-
-    private var hasOverrides: Bool {
-        unitMetrics.contains { health.unitOverride(for: $0) != nil }
-    }
-
-    private func resetUnits() {
-        for metric in unitMetrics where health.unitOverride(for: metric) != nil {
-            health.setUnitOverride(nil, for: metric)
-        }
     }
 }
