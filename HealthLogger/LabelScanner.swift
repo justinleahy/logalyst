@@ -6,30 +6,32 @@ import AVFoundation
 /// Photographs a nutrition facts label (or reads one from Photos), then creates a food from it and logs it.
 struct ScanLabelView: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var path: [Step] = []
-
-    private enum Step: Hashable {
-        case create(FoodDraft)
-        case log(Food)
-    }
+    /// The food read from the label, once there is one.
+    @State private var draft: FoodDraft?
+    @State private var path: [Food] = []
 
     var body: some View {
         NavigationStack(path: $path) {
-            LabelCaptureView { label in
-                var draft = FoodDraft()
-                draft.apply(label)
-                path = [.create(draft)]
+            Group {
+                // The editor takes the camera's place rather than being pushed: a push that starts while the
+                // photo picker is still closing leaves the navigation bar without a title.
+                if let draft {
+                    FoodEditor(draft: draft) { food in path = [food] }
+                } else {
+                    LabelCaptureView { label in
+                        var draft = FoodDraft()
+                        draft.apply(label)
+                        self.draft = draft
+                    }
+                    .navigationTitle("Scan Nutrition Label")
+                    .navigationBarTitleDisplayMode(.inline)
+                }
             }
-            .navigationTitle("Scan Nutrition Label")
-            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
             }
-            .navigationDestination(for: Step.self) { step in
-                switch step {
-                case .create(let draft): FoodEditor(draft: draft) { food in path = [.log(food)] }
-                case .log(let food): LogFoodView(food: food) { dismiss() }
-                }
+            .navigationDestination(for: Food.self) { food in
+                LogFoodView(food: food) { dismiss() }
             }
         }
     }
