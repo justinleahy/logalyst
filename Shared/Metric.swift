@@ -373,8 +373,15 @@ extension Metric {
               goal: .target(275), keywords: ["Carbs"]),
         grams(.dietaryFatTotal, id: "dietaryFatTotal", name: "Total Fat", image: "drop.halffull", defaultValue: 15,
               goal: .limit(78)),
+        grams(.dietaryFatSaturated, id: "dietaryFatSaturated", name: "Saturated Fat", image: "drop.fill",
+              defaultValue: 5, goal: .limit(20), keywords: ["Sat Fat"]),
         grams(.dietarySugar, id: "dietarySugar", name: "Sugar", image: "cube", defaultValue: 10, goal: .limit(50)),
         grams(.dietaryFiber, id: "dietaryFiber", name: "Fiber", image: "leaf", defaultValue: 5, goal: .target(28)),
+        // Daily values from US nutrition labels.
+        milligrams(.dietaryCholesterol, id: "dietaryCholesterol", name: "Cholesterol", image: "heart",
+                   defaultValue: 50, goal: .limit(300)),
+        milligrams(.dietarySodium, id: "dietarySodium", name: "Sodium", image: "aqi.low",
+                   defaultValue: 200, goal: .limit(2300), keywords: ["Salt"]),
     ]
 
     private static func grams(_ id: HKQuantityTypeIdentifier, id key: String, name: String,
@@ -383,6 +390,16 @@ extension Metric {
                kind: .quantity(id, [
                    UnitOption(unit: .gram(), label: "g", system: .both,
                               range: 0.1...1000, step: 1, defaultValue: defaultValue, fractionDigits: 1),
+               ]), onWatch: false, dailyGoal: goal, keywords: keywords)
+    }
+
+    private static func milligrams(_ id: HKQuantityTypeIdentifier, id key: String, name: String,
+                                   image: String, defaultValue: Double, goal: DailyGoal,
+                                   keywords: [String] = []) -> Metric {
+        Metric(id: key, name: name, category: .intake, systemImage: image,
+               kind: .quantity(id, [
+                   UnitOption(unit: .gramUnit(with: .milli), label: "mg", system: .both,
+                              range: 1...10000, step: 10, defaultValue: defaultValue),
                ]), onWatch: false, dailyGoal: goal, keywords: keywords)
     }
 

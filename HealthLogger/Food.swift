@@ -51,7 +51,7 @@ final class Food {
 
 /// Editable copy of a food's fields, also used to prefill a new food from a barcode lookup.
 struct FoodDraft: Hashable {
-    enum Source { case manual, database, notFound }
+    enum Source { case manual, database, notFound, label }
 
     var name = ""
     var brand = ""
@@ -84,6 +84,9 @@ enum FoodDatabase {
         "dietaryProtein": ("proteins", 1),
         "dietaryCarbohydrates": ("carbohydrates", 1),
         "dietaryFatTotal": ("fat", 1),
+        "dietaryFatSaturated": ("saturated-fat", 1),
+        "dietaryCholesterol": ("cholesterol", 1000), // reported in grams
+        "dietarySodium": ("sodium", 1000), // reported in grams
         "dietarySugar": ("sugars", 1),
         "dietaryFiber": ("fiber", 1),
         "dietaryCaffeine": ("caffeine", 1000), // reported in grams

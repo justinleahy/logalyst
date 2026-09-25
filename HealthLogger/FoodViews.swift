@@ -15,6 +15,7 @@ struct FoodLibraryView: View {
     @State private var search = ""
     @State private var editor: EditorTarget?
     @State private var scanning = false
+    @State private var scanningLabel = false
     @State private var recentFoods: [FoodPortion] = []
     @State private var recentMeals: [RecentMeal] = []
     /// Recent foods and meals logged a moment ago with their quick-log button, to show a checkmark.
@@ -64,6 +65,7 @@ struct FoodLibraryView: View {
                     Text("Create a food from its nutrition label, or scan its barcode to fill it in.")
                 } actions: {
                     Button("Scan Barcode") { scanning = true }.buttonStyle(.borderedProminent)
+                    Button("Scan Nutrition Label") { scanningLabel = true }
                     Button("New Food") { editor = .new }
                 }
             } else if !search.isEmpty && visibleFoods.isEmpty {
@@ -74,7 +76,10 @@ struct FoodLibraryView: View {
         .navigationTitle("Add Food")
         .toolbar {
             Button("Scan Barcode", systemImage: "barcode.viewfinder") { scanning = true }
-            Button("New Food", systemImage: "plus") { editor = .new }
+            Menu("New Food", systemImage: "plus") {
+                Button("New Food", systemImage: "square.and.pencil") { editor = .new }
+                Button("Scan Nutrition Label", systemImage: "text.viewfinder") { scanningLabel = true }
+            }
         }
         .sheet(item: $editor) { target in
             NavigationStack {
@@ -85,6 +90,7 @@ struct FoodLibraryView: View {
             }
         }
         .sheet(isPresented: $scanning) { ScanFoodView() }
+        .sheet(isPresented: $scanningLabel) { ScanLabelView() }
         .task(id: health.changeCount) { await loadRecents() }
         .sensoryFeedback(.success, trigger: justLogged.count) { old, new in new > old }
         .alert("Couldn't Save", isPresented: .constant(error != nil)) {
@@ -518,6 +524,7 @@ struct FoodEditor: View {
 
     @Environment(\.modelContext) private var context
     @State private var draft: FoodDraft
+    @State private var scanningLabel = false
 
     init(food: Food? = nil, draft: FoodDraft? = nil, onSave: @escaping (Food) -> Void) {
         self.food = food
@@ -534,12 +541,21 @@ struct FoodEditor: View {
             } footer: {
                 switch draft.source {
                 case .database: Text("Filled in from Open Food Facts. Check it against the label before saving.")
-                case .notFound: Text("This barcode isn't in Open Food Facts. Enter the details from the label.")
+                case .notFound: Text("This barcode isn't in Open Food Facts. Scan its nutrition label or enter the details.")
+                case .label: Text("Filled in from the label. Check each amount against it, and add a name, before saving.")
                 case .manual: EmptyView()
                 }
             }
-            Section("Nutrition per Serving") {
+            Section {
                 ForEach(FoodNutrient.metrics) { nutrientField($0) }
+            } header: {
+                HStack {
+                    Text("Nutrition per Serving")
+                    Spacer()
+                    Button("Scan Label", systemImage: "text.viewfinder") { scanningLabel = true }
+                        .font(.subheadline)
+                        .textCase(nil)
+                }
             }
             if let barcode = draft.barcode {
                 Section("Barcode") {
@@ -550,6 +566,17 @@ struct FoodEditor: View {
         .scrollDismissesKeyboard(.interactively)
         .navigationTitle(food == nil ? "New Food" : "Edit Food")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $scanningLabel) {
+            NavigationStack {
+                LabelCaptureView { label in
+                    draft.apply(label)
+                    scanningLabel = false
+                }
+                .navigationTitle("Scan Nutrition Label")
+                .navigationBarTitleDisplayMode(.inline)
+                .cancelButton { scanningLabel = false }
+            }
+        }
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save", action: save).disabled(!draft.isValid)

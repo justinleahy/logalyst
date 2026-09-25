@@ -52,8 +52,9 @@ They don't go through any server.
 
 ## Camera
 
-If you scan a barcode, Logalyst uses the camera to read it. Barcodes are recognized on the device, and
-camera images are never saved or sent anywhere.
+If you scan a barcode or a nutrition label, Logalyst uses the camera to read it. Barcodes and label text are
+recognized on the device, and camera images are never saved or sent anywhere. If you choose a photo of a label
+instead, the app reads only that photo, on the device, and doesn't keep it.
 
 ## Open Food Facts
 

@@ -34,9 +34,13 @@ struct NutritionEntry: TimelineEntry {
 }
 
 struct NutritionProvider: TimelineProvider {
-    /// Nutrients with goals, food first and caffeine last as on the Nutrition screen. Water has its own widget.
+    /// Nutrients with goals, food first and caffeine last as on the Nutrition screen. Water has its own widget,
+    /// and the nutrients mostly read off labels are left out so the large widget's rows stay readable.
+    private static let labelOnlyIDs: Set = ["dietaryFatSaturated", "dietaryCholesterol", "dietarySodium"]
     private static let metrics: [Metric] = {
-        let withGoals = Metric.metrics(in: .intake).filter { $0.dailyGoal != nil && $0 != .water }
+        let withGoals = Metric.metrics(in: .intake).filter {
+            $0.dailyGoal != nil && $0 != .water && !labelOnlyIDs.contains($0.id)
+        }
         let isCaffeine = { (metric: Metric) in metric.id == "dietaryCaffeine" }
         return withGoals.filter { !isCaffeine($0) } + withGoals.filter(isCaffeine)
     }()

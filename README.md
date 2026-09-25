@@ -8,7 +8,7 @@ An iPhone + Apple Watch app for manually logging health data that Apple Watch do
 | --- | --- |
 | Vitals | Blood pressure, blood glucose (with before/after meal), body temperature |
 | Body | Weight, body fat %, lean body mass, waist circumference |
-| Intake | Water, caffeine, alcoholic drinks, calories, protein, carbs, fat, sugar, fiber |
+| Intake | Water, caffeine, alcoholic drinks, calories, protein, carbs, fat, saturated fat, sugar, fiber, cholesterol, sodium |
 | Symptoms & events | 18 symptoms with severity (and optional duration), inhaler use, toothbrushing (duration), sexual activity (with protection used) |
 
 - **Favorites:** swipe right on a metric (or touch and hold it on iPhone) to star it and pin it to the top of the
@@ -21,7 +21,7 @@ An iPhone + Apple Watch app for manually logging health data that Apple Watch do
   Presets are kept per unit, so a 330 mL preset doesn't show when you enter fl oz. The Water widget's buttons use
   your first water presets, and they're edited on the iPhone and sent to the Watch.
 - **Nutrition** tab tracks today's water against a daily goal (with a progress ring and a
-  list of today's water to tap and fix or swipe away), shows calories, macros, sugar, fiber and caffeine against daily
+  list of today's water to tap and fix or swipe away), shows calories, macros, sugar, fiber, cholesterol, sodium and caffeine against daily
   targets or limits, and charts any intake metric over the last 7 days. Totals include data other apps
   save to Health. Tap the target button to edit goals.
 - **Log reminders:** in **Options → Log Reminders**, add a reminder for any metric, such as water, blood pressure
@@ -44,7 +44,7 @@ An iPhone + Apple Watch app for manually logging health data that Apple Watch do
   gaining adds 300 kcal. Water is the US National Academies' adequate intake from drinks (2.2 L for women, 3.0 L
   for men, 2.6 L otherwise; about 80% of total water, since food supplies the rest) plus 250 mL to 1 L for
   activity, and doesn't change with the weight goal. It only suggests goals for adults, and nothing changes until
-  you tap *Use These Goals*. The caffeine limit isn't touched.
+  you tap *Use These Goals*. The caffeine, saturated fat, cholesterol and sodium limits aren't touched.
 - **Foods:** save foods with their nutrition per serving (My Foods), then log them by the serving. Each one is
   saved to Health as a single food entry, so Health shows it by name and History lists it once. Each food is
   logged at a meal (breakfast, lunch, dinner or snack), which follows the time until you pick one, and the
@@ -52,6 +52,12 @@ An iPhone + Apple Watch app for manually logging health data that Apple Watch do
   barcode to jump straight to a saved food, or to fill in a new one from
   [Open Food Facts](https://world.openfoodfacts.org), a free, open food database. You can also type the number
   if the camera can't read it. Saved foods live on the iPhone only.
+- **Nutrition labels:** *Scan Nutrition Label* (in the Nutrition tab, or under ＋ in Add Food) photographs a
+  nutrition facts panel, or reads a photo you choose, and fills in a new food from it: the serving size and each
+  nutrient it lists. Tap *Scan Label* in the food editor to fill in a food you're already making, such as one
+  whose barcode isn't in Open Food Facts. Text is read on the iPhone with Apple's Vision framework, and photos
+  aren't kept. It reads US, Canadian and European labels. For European ones it uses the per 100 g column and
+  works out sodium from salt. Check the amounts before saving, since print can be misread.
 - **Logging food again:** *Add Food* starts with your recent meals (two or more foods at the same meal) and the
   foods you've logged in the last 30 days. Tap ⊕ to log one again now, as much as last time, or tap the row to
   change the servings, meal or time first (a meal lets you leave foods out). Swipe right on a food in History

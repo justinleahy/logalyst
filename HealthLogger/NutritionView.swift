@@ -12,6 +12,7 @@ struct NutritionView: View {
     @State private var waterToday: [LoggedEntry] = []
     @State private var foodToday: [LoggedEntry] = []
     @State private var scanning = false
+    @State private var scanningLabel = false
     @State private var trendMetric = Self.water
     @State private var editingGoals = false
     @State private var error: String?
@@ -45,6 +46,7 @@ struct NutritionView: View {
             }
             .sheet(isPresented: $editingGoals) { GoalsView() }
             .sheet(isPresented: $scanning) { ScanFoodView() }
+            .sheet(isPresented: $scanningLabel) { ScanLabelView() }
             .refreshable { await reload() }
             .task(id: health.changeCount) { await reload() }
             // Loads that ran while the phone was locked (such as when iOS prewarms the app) failed, so retry on unlock.
@@ -147,6 +149,11 @@ struct NutritionView: View {
                 scanning = true
             } label: {
                 Label("Scan Barcode", systemImage: "barcode.viewfinder")
+            }
+            Button {
+                scanningLabel = true
+            } label: {
+                Label("Scan Nutrition Label", systemImage: "text.viewfinder")
             }
         } header: {
             if foodToday.isEmpty { Text("Food") }

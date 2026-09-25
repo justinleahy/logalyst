@@ -504,10 +504,10 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Config/HealthLogger-Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "Logalyst";
+				INFOPLIST_KEY_CFBundleDisplayName = Logalyst;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
-				INFOPLIST_KEY_NSCameraUsageDescription = "Logalyst uses the camera to scan food barcodes.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Logalyst uses the camera to scan food barcodes and nutrition labels.";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "Logalyst reads the entries you've logged so it can show your history and prefill your last reading. If you ask it to suggest goals, it reads your height, weight, age, sex and resting energy to estimate them.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Logalyst saves the measurements, intake, and symptoms you enter to Apple Health.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -538,10 +538,10 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Config/HealthLogger-Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "Logalyst";
+				INFOPLIST_KEY_CFBundleDisplayName = Logalyst;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
-				INFOPLIST_KEY_NSCameraUsageDescription = "Logalyst uses the camera to scan food barcodes.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Logalyst uses the camera to scan food barcodes and nutrition labels.";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "Logalyst reads the entries you've logged so it can show your history and prefill your last reading. If you ask it to suggest goals, it reads your height, weight, age, sex and resting energy to estimate them.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Logalyst saves the measurements, intake, and symptoms you enter to Apple Health.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -571,7 +571,7 @@
 				CURRENT_PROJECT_VERSION = 18;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "Logalyst";
+				INFOPLIST_KEY_CFBundleDisplayName = Logalyst;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "Logalyst reads the entries you've logged so it can prefill your last reading.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Logalyst saves the measurements, intake, and symptoms you enter to Apple Health.";
@@ -601,7 +601,7 @@
 				CURRENT_PROJECT_VERSION = 18;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "Logalyst";
+				INFOPLIST_KEY_CFBundleDisplayName = Logalyst;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "Logalyst reads the entries you've logged so it can prefill your last reading.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Logalyst saves the measurements, intake, and symptoms you enter to Apple Health.";
@@ -630,7 +630,7 @@
 				CURRENT_PROJECT_VERSION = 18;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Config/HealthLoggerWidgets-Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "Logalyst";
+				INFOPLIST_KEY_CFBundleDisplayName = Logalyst;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -655,7 +655,7 @@
 				CURRENT_PROJECT_VERSION = 18;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Config/HealthLoggerWidgets-Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "Logalyst";
+				INFOPLIST_KEY_CFBundleDisplayName = Logalyst;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -680,7 +680,7 @@
 				CURRENT_PROJECT_VERSION = 18;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Config/HealthLoggerWatchWidgets-Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "Logalyst";
+				INFOPLIST_KEY_CFBundleDisplayName = Logalyst;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -705,7 +705,7 @@
 				CURRENT_PROJECT_VERSION = 18;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Config/HealthLoggerWatchWidgets-Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "Logalyst";
+				INFOPLIST_KEY_CFBundleDisplayName = Logalyst;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
