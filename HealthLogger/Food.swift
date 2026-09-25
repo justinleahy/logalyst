@@ -2,26 +2,22 @@ import Foundation
 import SwiftData
 
 /// A food the user saved, logged to Health as a food entry of its nutrients times the servings eaten.
+/// Synced through iCloud with every field end-to-end encrypted, which is why each has a default.
 @Model
 final class Food {
-    var name: String
-    var brand: String
+    @Attribute(.allowsCloudEncryption) var name = ""
+    @Attribute(.allowsCloudEncryption) var brand = ""
     /// Free text from the label, e.g. "1 cup" or "30 g".
-    var servingSize: String
-    var barcode: String?
+    @Attribute(.allowsCloudEncryption) var servingSize = ""
+    @Attribute(.allowsCloudEncryption) var barcode: String?
     /// Amount per serving keyed by metric ID, in each metric's first unit option (kcal, g, mg).
-    var nutrients: [String: Double]
-    var created: Date
-    var lastLogged: Date?
+    @Attribute(.allowsCloudEncryption) var nutrients: [String: Double] = [:]
+    @Attribute(.allowsCloudEncryption) var created = Date.now
+    @Attribute(.allowsCloudEncryption) var lastLogged: Date?
     /// Favorites sort to the top of My Foods.
-    var isFavorite: Bool = false
+    @Attribute(.allowsCloudEncryption) var isFavorite = false
 
     init(_ draft: FoodDraft) {
-        name = ""
-        brand = ""
-        servingSize = ""
-        nutrients = [:]
-        created = .now
         update(from: draft)
     }
 

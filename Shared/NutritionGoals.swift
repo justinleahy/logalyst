@@ -50,6 +50,14 @@ final class NutritionGoals {
         onChange?()
     }
 
+    /// Reads the goals again after iCloud brought newer ones from another iPhone.
+    func reload() {
+        guard amounts != Self.saved else { return }
+        amounts = Self.saved
+        WidgetCenter.shared.reloadAllTimelines()
+        onChange?()
+    }
+
     /// Stores the goals the iPhone sent, so the Watch's complications show progress toward them.
     static func receive(_ amounts: [String: Double]) {
         guard amounts != saved else { return }

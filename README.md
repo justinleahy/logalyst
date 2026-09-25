@@ -51,7 +51,7 @@ An iPhone + Apple Watch app for manually logging health data that Apple Watch do
   Nutrition tab lists today's food by meal. Scan a
   barcode to jump straight to a saved food, or to fill in a new one from
   [Open Food Facts](https://world.openfoodfacts.org), a free, open food database. You can also type the number
-  if the camera can't read it. Saved foods live on the iPhone only.
+  if the camera can't read it. Saved foods are kept on the iPhone and synced through iCloud (see below).
 - **Nutrition labels:** *Scan Nutrition Label* (in the Nutrition tab, or under ＋ in Add Food) photographs a
   nutrition facts panel, or reads a photo you choose, and fills in a new food from it: the serving size and each
   nutrient it lists. Tap *Scan Label* in the food editor to fill in a food you're already making, such as one
@@ -64,6 +64,16 @@ An iPhone + Apple Watch app for manually logging health data that Apple Watch do
   or the Nutrition tab (or touch and hold it) to log it again, and swipe right on a saved food to make it a
   favorite, which keeps it at the top of My Foods. Recents come from Health, which also stores each entry's
   servings, serving size, brand and meal, so they work even after the saved food is deleted.
+- **Recipes:** in *Add Food*, tap ＋ and *New Recipe* to combine servings of saved foods into a dish, and say how
+  many servings it makes. It's logged by the serving like any food (e.g. "1/4 recipe"), and saved to Health as
+  one food entry with the per-serving nutrition, so it shows in Recent and can be logged again. You can also
+  save a recent meal as a recipe from its screen. Ingredients are copies, so editing or deleting a saved food
+  later doesn't change recipes made with it.
+- **iCloud:** saved foods, recipes and settings (units, goals, favorites, presets, log reminders and Suggest
+  Goals answers) sync to the app's private database in the user's iCloud account, with every field end-to-end
+  encrypted (CloudKit encrypted values), so they carry over to a new or second iPhone. The most recent edit to
+  a setting wins. Without iCloud they stay on the device. Health data is synced by the Health app itself, and the
+  Watch still gets its settings from the iPhone.
 - **History** tab lists everything logged from either device; swipe to delete, or tap an entry to fix it. Health
   can't change a saved entry, so editing saves the corrected one and then deletes the original. Foods can't be
   edited, only deleted or logged again.

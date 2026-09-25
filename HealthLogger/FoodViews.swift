@@ -12,6 +12,7 @@ struct FoodLibraryView: View {
     @Environment(\.modelContext) private var context
     @Environment(HealthStore.self) private var health
     @Query(sort: \Food.name) private var foods: [Food]
+    @Query(sort: \Recipe.name) private var recipes: [Recipe]
     @State private var search = ""
     @State private var editor: EditorTarget?
     @State private var scanning = false
@@ -29,9 +30,16 @@ struct FoodLibraryView: View {
     private enum EditorTarget: Identifiable {
         case new
         case edit(Food)
+        case newRecipe
+        case editRecipe(Recipe)
 
-        var id: PersistentIdentifier? {
-            if case .edit(let food) = self { food.persistentModelID } else { nil }
+        var id: AnyHashable {
+            switch self {
+            case .new: "new"
+            case .edit(let food): food.persistentModelID
+            case .newRecipe: "newRecipe"
+            case .editRecipe(let recipe): recipe.persistentModelID
+            }
         }
     }
 
@@ -53,12 +61,17 @@ struct FoodLibraryView: View {
                     }
                 }
             }
+            if !visibleRecipes.isEmpty {
+                Section("Recipes") {
+                    ForEach(visibleRecipes) { recipeRow($0) }
+                }
+            }
             Section(foods.isEmpty ? "" : "My Foods") {
                 ForEach(visibleFoods) { savedFoodRow($0) }
             }
         }
         .overlay {
-            if foods.isEmpty && recentFoods.isEmpty {
+            if foods.isEmpty && recentFoods.isEmpty && recipes.isEmpty {
                 ContentUnavailableView {
                     Label("No Foods Yet", systemImage: "fork.knife")
                 } description: {
@@ -68,17 +81,18 @@ struct FoodLibraryView: View {
                     Button("Scan Nutrition Label") { scanningLabel = true }
                     Button("New Food") { editor = .new }
                 }
-            } else if !search.isEmpty && visibleFoods.isEmpty {
+            } else if !search.isEmpty && visibleFoods.isEmpty && visibleRecipes.isEmpty {
                 ContentUnavailableView.search(text: search)
             }
         }
-        .searchable(text: $search, prompt: "Search My Foods")
+        .searchable(text: $search, prompt: "Search Foods and Recipes")
         .navigationTitle("Add Food")
         .toolbar {
             Button("Scan Barcode", systemImage: "barcode.viewfinder") { scanning = true }
             Menu("New Food", systemImage: "plus") {
                 Button("New Food", systemImage: "square.and.pencil") { editor = .new }
                 Button("Scan Nutrition Label", systemImage: "text.viewfinder") { scanningLabel = true }
+                Button("New Recipe", systemImage: "book.closed") { editor = .newRecipe }
             }
         }
         .sheet(item: $editor) { target in
@@ -86,6 +100,9 @@ struct FoodLibraryView: View {
                 switch target {
                 case .new: FoodEditor { _ in editor = nil }.cancelButton { editor = nil }
                 case .edit(let food): FoodEditor(food: food) { _ in editor = nil }.cancelButton { editor = nil }
+                case .newRecipe: RecipeEditor { _ in editor = nil }.cancelButton { editor = nil }
+                case .editRecipe(let recipe):
+                    RecipeEditor(recipe: recipe) { _ in editor = nil }.cancelButton { editor = nil }
                 }
             }
         }
@@ -139,6 +156,25 @@ struct FoodLibraryView: View {
                     Food.markLogged([portion], among: foods)
                 }
             }
+        }
+    }
+
+    private func recipeRow(_ recipe: Recipe) -> some View {
+        NavigationLink {
+            LogFoodView(recipe: recipe)
+        } label: {
+            Label {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(recipe.name)
+                    Text(recipe.summary).font(.caption).foregroundStyle(.secondary)
+                }
+            } icon: {
+                Image(systemName: "book.closed")
+            }
+        }
+        .swipeActions {
+            Button("Delete", systemImage: "trash", role: .destructive) { context.delete(recipe) }
+            Button("Edit", systemImage: "pencil") { editor = .editRecipe(recipe) }
         }
     }
 
@@ -206,6 +242,15 @@ struct FoodLibraryView: View {
         // Favorites, then recently logged, then alphabetical (the query's order) for the rest.
         return matches.enumerated().sorted { a, b in
             if a.element.isFavorite != b.element.isFavorite { return a.element.isFavorite }
+            let (dateA, dateB) = (a.element.lastLogged ?? .distantPast, b.element.lastLogged ?? .distantPast)
+            return dateA != dateB ? dateA > dateB : a.offset < b.offset
+        }.map(\.element)
+    }
+
+    /// Recently logged first, then alphabetical.
+    private var visibleRecipes: [Recipe] {
+        let matches = search.isEmpty ? recipes : recipes.filter { $0.name.localizedStandardContains(search) }
+        return matches.enumerated().sorted { a, b in
             let (dateA, dateB) = (a.element.lastLogged ?? .distantPast, b.element.lastLogged ?? .distantPast)
             return dateA != dateB ? dateA > dateB : a.offset < b.offset
         }.map(\.element)
@@ -298,7 +343,7 @@ extension FoodPortion {
     }
 }
 
-private extension View {
+extension View {
     func cancelButton(_ action: @escaping () -> Void) -> some View {
         toolbar {
             ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: action) }
@@ -310,8 +355,8 @@ private extension View {
 
 /// Logs one food, by the serving.
 struct LogFoodView: View {
-    /// The saved food this came from, if any, which moves up in My Foods once logged.
-    let food: Food?
+    /// Marks the saved food or recipe this came from, if any, as just logged so it moves up its list.
+    private let markLogged: () -> Void
     /// Called after saving; pops this screen when nil.
     var onSaved: (() -> Void)?
 
@@ -331,7 +376,15 @@ struct LogFoodView: View {
     }
 
     init(_ portion: FoodPortion, food: Food? = nil, onSaved: (() -> Void)? = nil) {
-        self.food = food
+        self.init(portion, onSaved: onSaved) { food?.lastLogged = .now }
+    }
+
+    init(recipe: Recipe, onSaved: (() -> Void)? = nil) {
+        self.init(recipe.portion, onSaved: onSaved) { recipe.lastLogged = .now }
+    }
+
+    private init(_ portion: FoodPortion, onSaved: (() -> Void)?, markLogged: @escaping () -> Void) {
+        self.markLogged = markLogged
         self.onSaved = onSaved
         _portion = State(initialValue: portion)
     }
@@ -381,7 +434,7 @@ struct LogFoodView: View {
             defer { isSaving = false }
             do {
                 try await health.saveFoods([portion], meal: meal, date: date)
-                food?.lastLogged = .now
+                markLogged()
                 saved.toggle()
                 if let onSaved { onSaved() } else { dismiss() }
             } catch {
@@ -407,6 +460,7 @@ struct LogMealView: View {
     @State private var error: String?
     @State private var isSaving = false
     @State private var saved = false
+    @State private var savingRecipe = false
 
     /// With no meal, it defaults to the usual one for the time.
     init(title: String, portions: [FoodPortion], meal: Meal? = nil, onSaved: (() -> Void)? = nil) {
@@ -420,20 +474,7 @@ struct LogMealView: View {
     var body: some View {
         Form {
             Section {
-                ForEach($portions) { $portion in
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(portion.name)
-                                .foregroundStyle(portion.servings > 0 ? .primary : .secondary)
-                            Text(portion.servings > 0 ? portion.summary : "Left out")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Stepper("Servings of \(portion.name)", value: $portion.servings, in: 0...20, step: 0.5)
-                            .labelsHidden()
-                    }
-                }
+                ForEach($portions) { PortionRow(portion: $0, zeroText: "Left out") }
             } header: {
                 Text("Foods")
             } footer: {
@@ -441,6 +482,19 @@ struct LogMealView: View {
             }
             NutritionTotals(portions: included)
             MealAndTimeSection(meal: $meal, mealChosen: $mealChosen, date: $date)
+            Section {
+                Button("Save as Recipe", systemImage: "book.closed") { savingRecipe = true }
+                    .disabled(included.isEmpty)
+            } footer: {
+                Text("Save these foods as a recipe to log them together later.")
+            }
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .sheet(isPresented: $savingRecipe) {
+            NavigationStack {
+                RecipeEditor(ingredients: included) { _ in savingRecipe = false }
+                    .cancelButton { savingRecipe = false }
+            }
         }
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
@@ -477,12 +531,40 @@ struct LogMealView: View {
     }
 }
 
-/// What the portions add up to, per nutrient.
-private struct NutritionTotals: View {
-    let portions: [FoodPortion]
+/// A food in a list of several, with its servings to change. At zero servings it shows `zeroText`.
+struct PortionRow: View {
+    @Binding var portion: FoodPortion
+    let zeroText: String
 
     var body: some View {
-        Section("Nutrition") {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(portion.name)
+                    .foregroundStyle(portion.servings > 0 ? .primary : .secondary)
+                Text(portion.servings > 0 ? portion.summary : zeroText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            TextField("0", value: $portion.servings, format: .number.precision(.fractionLength(0...2)))
+                .keyboardType(.decimalPad)
+                .multilineTextAlignment(.trailing)
+                .monospacedDigit()
+                .frame(maxWidth: 44)
+                .accessibilityLabel("Servings of \(portion.name)")
+            Stepper("Servings of \(portion.name)", value: $portion.servings, in: 0...50, step: 0.5)
+                .labelsHidden()
+        }
+    }
+}
+
+/// What the portions add up to, per nutrient.
+struct NutritionTotals: View {
+    let portions: [FoodPortion]
+    var title = "Nutrition"
+
+    var body: some View {
+        Section(title) {
             ForEach(FoodNutrient.metrics) { metric in
                 let total = portions.map { $0.amount(of: metric.id) }.reduce(0, +)
                 if total > 0, let option = metric.unitOptions.first {

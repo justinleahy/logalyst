@@ -223,6 +223,18 @@ final class HealthStore {
         }
     }
 
+    /// Reads units, favorites and presets again after iCloud brought newer ones from another iPhone,
+    /// and passes them on to the Watch.
+    func reloadSettings() {
+        unitOverrides = AppGroup.defaults.dictionary(forKey: Self.unitOverridesKey) as? [String: String] ?? [:]
+        favoriteIDs = Set(AppGroup.defaults.stringArray(forKey: Self.favoritesKey) ?? [])
+        favoritesUpdated = AppGroup.defaults.object(forKey: Self.favoritesUpdatedKey) as? Date
+        customPresets = AppGroup.defaults.dictionary(forKey: Self.presetsKey) as? [String: [String: [Double]]] ?? [:]
+        if let state = favoritesState { sync?.send(state) }
+        sendPresets()
+        didChange()
+    }
+
     // MARK: Goals
 
     /// Offers the Watch the goals set on this iPhone, so its complications can show progress toward them.

@@ -37,7 +37,7 @@ enum Meal: String, CaseIterable, Identifiable {
 
 /// One food as it goes into Health: its nutrition per serving and how many servings were eaten.
 /// Built from a saved food, or read back from a past food entry so it can be logged again.
-struct FoodPortion: Identifiable, Hashable {
+struct FoodPortion: Identifiable, Hashable, Codable {
     var id = UUID()
     var name: String
     var brand = ""

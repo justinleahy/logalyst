@@ -340,6 +340,15 @@ final class LogReminders: NSObject, UNUserNotificationCenterDelegate {
         didChange()
     }
 
+    /// Reads the reminders again after iCloud brought newer ones from another iPhone, and schedules them.
+    func reload() {
+        guard let data = defaults.data(forKey: Self.remindersKey),
+              let saved = try? JSONDecoder().decode([LogReminder].self, from: data), saved != reminders else { return }
+        reminders = saved
+        updateObservers()
+        reschedule()
+    }
+
     private func didChange() {
         if let data = try? JSONEncoder().encode(reminders) {
             defaults.set(data, forKey: Self.remindersKey)
