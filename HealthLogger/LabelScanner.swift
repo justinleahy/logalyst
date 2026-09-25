@@ -182,7 +182,7 @@ private struct LabelCamera: UIViewControllerRepresentable {
     }
 }
 
-private extension CGImagePropertyOrientation {
+extension CGImagePropertyOrientation {
     init(_ orientation: UIImage.Orientation) {
         self = switch orientation {
         case .up: .up

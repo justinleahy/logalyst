@@ -507,7 +507,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = Logalyst;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
-				INFOPLIST_KEY_NSCameraUsageDescription = "Logalyst uses the camera to scan food barcodes and nutrition labels.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Logalyst uses the camera to scan food barcodes and nutrition labels, and to photograph meals.";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "Logalyst reads the entries you've logged so it can show your history and prefill your last reading. If you ask it to suggest goals, it reads your height, weight, age, sex and resting energy to estimate them.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Logalyst saves the measurements, intake, and symptoms you enter to Apple Health.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -541,7 +541,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = Logalyst;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
-				INFOPLIST_KEY_NSCameraUsageDescription = "Logalyst uses the camera to scan food barcodes and nutrition labels.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Logalyst uses the camera to scan food barcodes and nutrition labels, and to photograph meals.";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "Logalyst reads the entries you've logged so it can show your history and prefill your last reading. If you ask it to suggest goals, it reads your height, weight, age, sex and resting energy to estimate them.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Logalyst saves the measurements, intake, and symptoms you enter to Apple Health.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

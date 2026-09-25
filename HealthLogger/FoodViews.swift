@@ -17,6 +17,7 @@ struct FoodLibraryView: View {
     @State private var editor: EditorTarget?
     @State private var scanning = false
     @State private var scanningLabel = false
+    @State private var photographingMeal = false
     @State private var recentFoods: [FoodPortion] = []
     @State private var recentMeals: [RecentMeal] = []
     /// Recent foods and meals logged a moment ago with their quick-log button, to show a checkmark.
@@ -93,6 +94,9 @@ struct FoodLibraryView: View {
                 Button("New Food", systemImage: "square.and.pencil") { editor = .new }
                 Button("Scan Nutrition Label", systemImage: "text.viewfinder") { scanningLabel = true }
                 Button("New Recipe", systemImage: "book.closed") { editor = .newRecipe }
+                if MealPhoto.isAvailable {
+                    Button("Photo of Meal", systemImage: "camera") { photographingMeal = true }
+                }
             }
         }
         .sheet(item: $editor) { target in
@@ -108,6 +112,7 @@ struct FoodLibraryView: View {
         }
         .sheet(isPresented: $scanning) { ScanFoodView() }
         .sheet(isPresented: $scanningLabel) { ScanLabelView() }
+        .sheet(isPresented: $photographingMeal) { MealPhotoView() }
         .task(id: health.changeCount) { await loadRecents() }
         .sensoryFeedback(.success, trigger: justLogged.count) { old, new in new > old }
         .alert("Couldn't Save", isPresented: .constant(error != nil)) {
@@ -447,6 +452,8 @@ struct LogFoodView: View {
 /// Logs several foods at once, such as a meal eaten before. Each is saved as its own food entry.
 struct LogMealView: View {
     let title: String
+    /// Shown under the foods, e.g. to say they're estimates.
+    var note: String?
     /// Called after saving; pops this screen when nil.
     var onSaved: (() -> Void)?
 
@@ -456,18 +463,21 @@ struct LogMealView: View {
     @State private var portions: [FoodPortion]
     @State private var meal: Meal
     @State private var mealChosen: Bool
-    @State private var date = Date.now
+    @State private var date: Date
     @State private var error: String?
     @State private var isSaving = false
     @State private var saved = false
     @State private var savingRecipe = false
 
-    /// With no meal, it defaults to the usual one for the time.
-    init(title: String, portions: [FoodPortion], meal: Meal? = nil, onSaved: (() -> Void)? = nil) {
+    /// With no meal, it defaults to the usual one for the time, which is now unless `date` says otherwise.
+    init(title: String, portions: [FoodPortion], meal: Meal? = nil, date: Date? = nil, note: String? = nil,
+         onSaved: (() -> Void)? = nil) {
         self.title = title
+        self.note = note
         self.onSaved = onSaved
         _portions = State(initialValue: portions)
-        _meal = State(initialValue: meal ?? Meal(at: .now))
+        _date = State(initialValue: date ?? .now)
+        _meal = State(initialValue: meal ?? Meal(at: date ?? .now))
         _mealChosen = State(initialValue: meal != nil)
     }
 
@@ -478,7 +488,7 @@ struct LogMealView: View {
             } header: {
                 Text("Foods")
             } footer: {
-                Text("Set a food to 0 servings to leave it out.")
+                Text([note, "Set a food to 0 servings to leave it out."].compactMap { $0 }.joined(separator: " "))
             }
             NutritionTotals(portions: included)
             MealAndTimeSection(meal: $meal, mealChosen: $mealChosen, date: $date)

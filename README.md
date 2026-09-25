@@ -64,6 +64,12 @@ An iPhone + Apple Watch app for manually logging health data that Apple Watch do
   or the Nutrition tab (or touch and hold it) to log it again, and swipe right on a saved food to make it a
   favorite, which keeps it at the top of My Foods. Recents come from Health, which also stores each entry's
   servings, serving size, brand and meal, so they work even after the saved food is deleted.
+- **Photo of Meal** (iOS 27 or later with Apple Intelligence on): take or choose a photo of a meal, and Apple
+  Intelligence's on-device model lists each food and drink with the amount shown and its estimated calories,
+  macros, sugar, fiber and caffeine. Foods named like one of your saved foods or recipes use your nutrition
+  instead. Check and adjust them on the meal screen (servings, leaving foods out, meal and time) before logging,
+  or save them as a recipe. A photo from your library is logged at the time it was taken. Nothing leaves the
+  iPhone, and the button only appears where the model is available.
 - **Recipes:** in *Add Food*, tap ＋ and *New Recipe* to combine servings of saved foods into a dish, and say how
   many servings it makes. It's logged by the serving like any food (e.g. "1/4 recipe"), and saved to Health as
   one food entry with the per-serving nutrition, so it shows in Recent and can be logged again. You can also

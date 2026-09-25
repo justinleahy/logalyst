@@ -64,6 +64,9 @@ connection. The Watch doesn't use iCloud for these.
 
 ## Camera
 
+If you take or choose a photo of a meal, Apple Intelligence's on-device model estimates the foods in it on your
+iPhone. The photo isn't sent anywhere or kept, and nothing is logged until you check it and tap Log.
+
 If you scan a barcode or a nutrition label, Logalyst uses the camera to read it. Barcodes and label text are
 recognized on the device, and camera images are never saved or sent anywhere. If you choose a photo of a label
 instead, the app reads only that photo, on the device, and doesn't keep it.
