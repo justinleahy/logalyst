@@ -122,4 +122,4 @@ data is handled, we will also say so in the app's release notes.
 
 ## Contact
 
-Questions about this policy or your privacy? Email **[CONTACT EMAIL]**.
+Questions about this policy or your privacy? Email [support@logalyst.app](mailto:support@logalyst.app).

@@ -1,0 +1,90 @@
+:root {
+  --accent: #e8264a;
+  --bg: #ffffff;
+  --surface: #f6f6f8;
+  --text: #1c1c1e;
+  --muted: #6c6c70;
+  --border: #e3e3e8;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --accent: #ff5a74;
+    --bg: #000000;
+    --surface: #1c1c1e;
+    --text: #f2f2f7;
+    --muted: #a1a1a6;
+    --border: #2c2c2e;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 17px/1.55 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--accent); }
+
+.site-header, main, .site-footer {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+.site-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 20px;
+  padding-bottom: 20px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+  font-weight: 600;
+  text-decoration: none;
+}
+.brand img { border-radius: 7px; }
+
+nav { display: flex; gap: 20px; }
+nav a { color: var(--muted); text-decoration: none; }
+nav a:hover, nav a[aria-current="page"] { color: var(--text); }
+
+.hero { text-align: center; padding: 48px 0 32px; }
+.app-icon { border-radius: 28px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.15); }
+.hero h1 { font-size: 44px; letter-spacing: -0.02em; margin: 20px 0 8px; }
+.lede { font-size: 20px; color: var(--muted); max-width: 32em; margin: 0 auto; }
+
+.features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  padding: 24px 0 48px;
+}
+.features div { background: var(--surface); border-radius: 16px; padding: 20px; }
+.features h2 { font-size: 17px; margin: 0 0 6px; }
+.features p { margin: 0; color: var(--muted); font-size: 15px; }
+
+.prose { padding: 16px 0 48px; overflow-wrap: anywhere; }
+.prose h1 { font-size: 34px; letter-spacing: -0.01em; line-height: 1.2; }
+.prose h2 { font-size: 22px; margin-top: 2em; }
+.prose h3 { font-size: 18px; margin-top: 1.6em; }
+.prose li { margin: 0.35em 0; }
+
+.site-footer {
+  border-top: 1px solid var(--border);
+  padding-top: 20px;
+  padding-bottom: 40px;
+  color: var(--muted);
+  font-size: 14px;
+}

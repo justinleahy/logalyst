@@ -1,0 +1,13 @@
+{
+  "name": "logalyst-website",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "deploy": "npm run build && swa deploy dist --env production"
+  },
+  "devDependencies": {
+    "@azure/static-web-apps-cli": "^2.0.0",
+    "marked": "^16.0.0"
+  }
+}

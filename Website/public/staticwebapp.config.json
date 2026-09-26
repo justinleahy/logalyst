@@ -1,0 +1,14 @@
+{
+  "trailingSlash": "auto",
+  "routes": [
+    { "route": "/privacy.html", "redirect": "/privacy/", "statusCode": 301 },
+    { "route": "/support.html", "redirect": "/support/", "statusCode": 301 }
+  ],
+  "responseOverrides": {
+    "404": { "redirect": "/", "statusCode": 302 }
+  },
+  "globalHeaders": {
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin"
+  }
+}
