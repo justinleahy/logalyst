@@ -11,6 +11,8 @@ struct NutritionView: View {
     @State private var totals: [Metric: [DailyTotal]] = [:]
     @State private var waterToday: [LoggedEntry] = []
     @State private var foodToday: [LoggedEntry] = []
+    /// Bumped by every reload and delete, so a reload that finishes after a newer change doesn't overwrite it.
+    @State private var generation = 0
     @State private var scanning = false
     @State private var scanningLabel = false
     @State private var photographingMeal = false
@@ -211,28 +213,42 @@ struct NutritionView: View {
     }
 
     private func reload() async {
+        generation += 1
+        let started = generation
         do {
             var loaded: [Metric: [DailyTotal]] = [:]
             for metric in Self.intake {
                 loaded[metric] = try await health.dailyTotals(for: metric, days: Self.trendDays)
             }
-            totals = loaded
             let today = Calendar.current.startOfDay(for: .now)
-            waterToday = try await health.recentEntries(of: [Self.water], includingFoods: false, since: today)
-            foodToday = try await health.recentEntries(of: [], since: today)
+            let waterEntries = try await health.recentEntries(of: [Self.water], includingFoods: false, since: today)
+            let foodEntries = try await health.recentEntries(of: [], since: today)
+            guard started == generation else { return }
+            totals = loaded
+            waterToday = waterEntries
+            foodToday = foodEntries
         } catch where error.isHealthDataLocked {
             // Keep what's showing; this reloads once the phone is unlocked.
         } catch {
+            guard started == generation else { return }
             self.error = error.healthMessage
         }
     }
 
     private func delete(_ toDelete: [LoggedEntry]) {
+        // The list has already removed the rows, so remove them from the data now too. Leaving them until Health
+        // finishes lets the list and the entries disagree, which crashes when the list applies its next update.
+        let ids = Set(toDelete.map(\.id))
+        waterToday.removeAll { ids.contains($0.id) }
+        foodToday.removeAll { ids.contains($0.id) }
+        generation += 1
         Task {
             do {
                 for entry in toDelete { try await health.delete(entry) }
             } catch {
                 self.error = error.healthMessage
+                // Bring back whatever wasn't deleted.
+                await reload()
             }
         }
     }

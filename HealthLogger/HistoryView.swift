@@ -5,6 +5,8 @@ struct HistoryView: View {
     @Environment(HealthStore.self) private var health
     @State private var entries: [LoggedEntry] = []
     @State private var loaded = false
+    /// Bumped by every reload and delete, so a reload that finishes after a newer change doesn't overwrite it.
+    @State private var generation = 0
     @State private var error: String?
 
     var body: some View {
@@ -70,22 +72,34 @@ struct HistoryView: View {
     }
 
     private func reload() async {
+        generation += 1
+        let started = generation
         do {
-            entries = try await health.recentEntries()
+            let recent = try await health.recentEntries()
+            guard started == generation else { return }
+            entries = recent
         } catch where error.isHealthDataLocked {
             // Keep what's showing; this reloads once the phone is unlocked.
         } catch {
+            guard started == generation else { return }
             self.error = error.healthMessage
         }
         loaded = true
     }
 
     private func delete(_ toDelete: [LoggedEntry]) {
+        // The list has already removed the rows, so remove them from the data now too. Leaving them until Health
+        // finishes lets the list and `entries` disagree, which crashes when the list applies its next update.
+        let ids = Set(toDelete.map(\.id))
+        entries.removeAll { ids.contains($0.id) }
+        generation += 1
         Task {
             do {
                 for entry in toDelete { try await health.delete(entry) }
             } catch {
                 self.error = error.healthMessage
+                // Bring back whatever wasn't deleted.
+                await reload()
             }
         }
     }
