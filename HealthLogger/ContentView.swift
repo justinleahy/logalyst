@@ -1,8 +1,11 @@
+import SwiftData
 import SwiftUI
 
 struct ContentView: View {
     @Environment(HealthStore.self) private var health
     @Environment(LogReminders.self) private var reminders
+    @Environment(NutritionGoals.self) private var goals
+    @Environment(\.modelContext) private var modelContext
     @State private var authError: String?
     @State private var tab = AppTab.log
     @State private var logPath: [Metric] = []
@@ -35,6 +38,9 @@ struct ContentView: View {
         .task {
             do { try await health.requestAuthorization() }
             catch { authError = error.localizedDescription }
+            #if DEBUG
+            await ScreenshotData.seed(health: health, goals: goals, context: modelContext)
+            #endif
         }
         .alert("Couldn't Request Health Access", isPresented: .constant(authError != nil)) {
             Button("OK") { authError = nil }

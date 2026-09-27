@@ -16,7 +16,12 @@ struct HealthLoggerWatchApp: App {
         WindowGroup {
             WatchLogView()
                 .environment(health)
-                .task { try? await health.requestAuthorization() }
+                .task {
+                    try? await health.requestAuthorization()
+                    #if DEBUG
+                    await WatchScreenshotData.seed(health: health)
+                    #endif
+                }
         }
     }
 }
