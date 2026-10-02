@@ -23,8 +23,9 @@ enum MealPhoto {
         }
     }
 
-    /// The foods in the photo, one serving each being the amount shown. Foods named like one of `known` (saved foods
-    /// and recipes) use its nutrition instead of an estimate.
+    /// The foods in the photo. Separate pieces of one food, like 5 bananas, come back as one piece with that many
+    /// servings; anything else is one serving of the amount shown. Foods named like one of `known` (saved foods and
+    /// recipes) use its nutrition instead of an estimate.
     static func foods(in image: CGImage, orientation: CGImagePropertyOrientation,
                       known: [FoodPortion]) async throws -> [FoodPortion] {
         guard #available(iOS 27.0, *), isAvailable else { throw Failure.unavailable }
@@ -38,7 +39,7 @@ enum MealPhoto {
         return foods.map { estimate in
             if var match = known.first(where: { $0.name.localizedCaseInsensitiveCompare(estimate.name) == .orderedSame }) {
                 match.id = UUID()
-                match.servings = 1
+                match.servings = Double(estimate.count)
                 return match
             }
             return estimate.portion
@@ -48,8 +49,11 @@ enum MealPhoto {
     private static func instructions(knownNames: [String]) -> String {
         var text = """
             You estimate nutrition from photos of meals for a food log. List every separate food and every drink \
-            you can see, with the amount shown and its nutrition for that amount, using typical values for that \
-            food and portion. Count items carefully, and judge portion sizes from the plate, bowl, cup and utensils. \
+            you can see, using typical nutrition values for that food and portion. When a food is several separate \
+            pieces of the same kind, like bananas, eggs, cookies or slices of pizza, list it once with its singular \
+            name, count the pieces carefully, and give the serving size and nutrition of just one piece. Otherwise \
+            the count is 1 and the serving is the whole amount shown. Judge portion sizes from the plate, bowl, cup \
+            and utensils. \
             Judge drinks by how they look: black coffee, tea and water have almost no calories unless milk, cream \
             or sugar is visible. Don't list plates, cutlery or garnishes too small to matter. Only list what's \
             really in the photo; if there's no food or drink, return no foods.
@@ -91,26 +95,28 @@ private struct MealEstimate {
 @available(iOS 27.0, *)
 @Generable
 private struct FoodEstimate {
-    @Guide(description: "The food's common name, including how it's prepared when you can tell")
+    @Guide(description: "The food's common singular name, such as Banana rather than Bananas, including how it's prepared when you can tell")
     var name: String
-    @Guide(description: "The amount shown in everyday units, such as cups, pieces, slices or fluid ounces")
-    var amount: String
-    @Guide(description: "Calories in kcal for the amount shown", .range(0...3000))
+    @Guide(description: "How many separate pieces of this food are shown, such as 5 for five bananas. 1 for food that isn't in separate pieces, like rice, soup or a drink.", .range(1...50))
+    var count: Int
+    @Guide(description: "One serving in everyday units: one piece, such as 1 medium or 1 slice, when there are separate pieces; otherwise the whole amount shown, such as 1.5 cups or 12 fluid ounces")
+    var servingSize: String
+    @Guide(description: "Calories in kcal for one serving", .range(0...3000))
     var calories: Int
-    @Guide(description: "Protein in grams for the amount shown", .range(0...300))
+    @Guide(description: "Protein in grams for one serving", .range(0...300))
     var protein: Double
-    @Guide(description: "Carbohydrates in grams for the amount shown", .range(0...500))
+    @Guide(description: "Carbohydrates in grams for one serving", .range(0...500))
     var carbohydrates: Double
-    @Guide(description: "Total fat in grams for the amount shown", .range(0...300))
+    @Guide(description: "Total fat in grams for one serving", .range(0...300))
     var fat: Double
-    @Guide(description: "Sugar in grams for the amount shown", .range(0...300))
+    @Guide(description: "Sugar in grams for one serving", .range(0...300))
     var sugar: Double
-    @Guide(description: "Fiber in grams for the amount shown", .range(0...100))
+    @Guide(description: "Fiber in grams for one serving", .range(0...100))
     var fiber: Double
-    @Guide(description: "Caffeine in milligrams for the amount shown, 0 for most foods", .range(0...500))
+    @Guide(description: "Caffeine in milligrams for one serving, 0 for most foods", .range(0...500))
     var caffeine: Double
 
-    /// The amount shown counts as one serving.
+    /// One piece or the whole amount shown, eaten `count` times.
     var portion: FoodPortion {
         let nutrients: [String: Double] = [
             "dietaryEnergyConsumed": Double(calories),
@@ -122,12 +128,13 @@ private struct FoodEstimate {
             "dietaryCaffeine": caffeine,
         ]
         let name = name.trimmingCharacters(in: .whitespaces)
-        var amount = amount.trimmingCharacters(in: .whitespaces)
+        var amount = servingSize.trimmingCharacters(in: .whitespaces)
         // A bare count like "1" reads oddly on its own.
         if !amount.isEmpty, !amount.contains(where: \.isLetter) {
             amount += amount == "1" ? " serving" : " servings"
         }
         return FoodPortion(name: name.prefix(1).uppercased() + name.dropFirst(), servingSize: amount,
-                           nutrients: nutrients.filter { $0.value > 0 }.mapValues { ($0 * 10).rounded() / 10 })
+                           nutrients: nutrients.filter { $0.value > 0 }.mapValues { ($0 * 10).rounded() / 10 },
+                           servings: Double(count))
     }
 }
