@@ -147,29 +147,26 @@ struct LogMetricIntent: AppIntent {
     }
 }
 
-/// Opens the app to a metric's entry screen, for the Log Metric control. It runs in the app, which is why it's
-/// compiled into the apps as well as the widget extensions: a control can't open the app to a custom URL scheme.
-struct OpenMetricIntent: AppIntent {
+/// Opens the app to a metric's entry screen, for the Log Metric control. A control can't open the app to a custom
+/// URL scheme, so this hands the screen to the app through IntentNavigation instead. That only reaches the app if
+/// this runs in the app's process: as an OpenIntent compiled into the apps as well as the widget extensions, it's
+/// launched in the app rather than the extension.
+struct OpenMetricIntent: OpenIntent {
     static let title: LocalizedStringResource = "Open Metric"
     static let description = IntentDescription("Opens Logalyst to log a metric.")
-    static let openAppWhenRun = true
-
-    @available(iOS 26.0, watchOS 26.0, *)
-    static var supportedModes: IntentModes { .foreground }
 
     @Parameter(title: "Metric")
-    var metric: MetricEntity?
+    var target: MetricEntity
 
     init() {}
 
-    init(metric: MetricEntity?) {
-        self.metric = metric
+    init(target: MetricEntity) {
+        self.target = target
     }
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        let metric = metric.flatMap { Metric.metric(id: $0.id) } ?? .water
-        IntentNavigation.shared.link = .log(metric)
+        IntentNavigation.shared.link = .log(Metric.metric(id: target.id) ?? .water)
         return .result()
     }
 }

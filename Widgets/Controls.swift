@@ -32,7 +32,7 @@ struct LogMetricControlIntent: ControlConfigurationIntent {
 struct LogMetricControl: ControlWidget {
     var body: some ControlWidgetConfiguration {
         AppIntentControlConfiguration(kind: "LogMetricControl", intent: LogMetricControlIntent.self) { configuration in
-            ControlWidgetButton(action: OpenMetricIntent(metric: configuration.metric)) {
+            ControlWidgetButton(action: OpenMetricIntent(target: configuration.metric ?? MetricEntity(.water))) {
                 if let metric = configuration.metric {
                     Label("Log \(metric.name)", systemImage: metric.systemImage)
                 } else {
