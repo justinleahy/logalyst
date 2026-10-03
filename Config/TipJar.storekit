@@ -21,7 +21,7 @@
           "locale" : "en_US"
         }
       ],
-      "productID" : "com.justinleahy.HealthLogger.tip.small",
+      "productID" : "com.justinleahy.Logalyst.tip.small",
       "referenceName" : "Small Tip",
       "type" : "Consumable"
     },
@@ -36,7 +36,7 @@
           "locale" : "en_US"
         }
       ],
-      "productID" : "com.justinleahy.HealthLogger.tip.medium",
+      "productID" : "com.justinleahy.Logalyst.tip.medium",
       "referenceName" : "Medium Tip",
       "type" : "Consumable"
     },
@@ -51,7 +51,7 @@
           "locale" : "en_US"
         }
       ],
-      "productID" : "com.justinleahy.HealthLogger.tip.large",
+      "productID" : "com.justinleahy.Logalyst.tip.large",
       "referenceName" : "Large Tip",
       "type" : "Consumable"
     }

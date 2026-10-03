@@ -13,9 +13,9 @@ final class TipJar {
 
     /// The tip product IDs, smallest first. Each needs a matching consumable in App Store Connect.
     static let productIDs = [
-        "com.justinleahy.HealthLogger.tip.small",
-        "com.justinleahy.HealthLogger.tip.medium",
-        "com.justinleahy.HealthLogger.tip.large",
+        "com.justinleahy.Logalyst.tip.small",
+        "com.justinleahy.Logalyst.tip.medium",
+        "com.justinleahy.Logalyst.tip.large",
     ]
 
     private(set) var products: [Product] = []
@@ -130,8 +130,8 @@ struct TipJarView: View {
     }
 
     private static let symbols = [
-        "com.justinleahy.HealthLogger.tip.small": "drop",
-        "com.justinleahy.HealthLogger.tip.medium": "cup.and.saucer",
-        "com.justinleahy.HealthLogger.tip.large": "fork.knife",
+        "com.justinleahy.Logalyst.tip.small": "drop",
+        "com.justinleahy.Logalyst.tip.medium": "cup.and.saucer",
+        "com.justinleahy.Logalyst.tip.large": "fork.knife",
     ]
 }
