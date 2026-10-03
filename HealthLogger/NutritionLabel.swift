@@ -56,8 +56,15 @@ struct NutritionLabel {
         if nutrients["dietarySodium"] == nil, let salt {
             nutrients["dietarySodium"] = (salt * 400).rounded()
         }
-        if servingSize.isEmpty, let per100 = rows.lazy.compactMap(Self.per100).first {
-            servingSize = per100
+        // European labels list amounts per 100 g (or mL) first, so the amounts read are for that, even when a
+        // serving size is printed too. Scale them to the serving when it's in the same unit, or call the
+        // serving 100 g.
+        if let per100 = rows.lazy.compactMap(Self.per100Unit).first {
+            if let serving = Self.amount(in: servingSize, unit: per100) {
+                nutrients = nutrients.mapValues { ($0 * serving / 100 * 10).rounded() / 10 }
+            } else {
+                servingSize = per100 == "g" ? "100 g" : "100 mL"
+            }
         }
         guard nutrients.count >= 2 else { return nil }
     }
@@ -120,10 +127,19 @@ struct NutritionLabel {
         return nil
     }
 
-    /// "100 g" for a label that only gives amounts per 100 g (or mL).
-    private static func per100(_ row: String) -> String? {
+    /// "g" or "ml" for a label whose first column of amounts is per 100 g or 100 mL.
+    private static func per100Unit(_ row: String) -> Substring? {
         guard let match = row.firstMatch(of: #/per\s+100\s*(g|ml)\b/#) else { return nil }
-        return match.output.1 == "g" ? "100 g" : "100 mL"
+        // "Per serving (30 g) | Per 100 g" lists the serving first, and that's the column read.
+        guard !row[..<match.range.lowerBound].contains(#/\bper\s+(serving|portion|\d)|\beach\b/#) else { return nil }
+        return match.output.1
+    }
+
+    /// The weight or volume in a serving size, like 30 for "1 bar (30 g)" in grams. Nil if it's in another unit.
+    private static func amount(in serving: String, unit: Substring) -> Double? {
+        guard let match = serving.lowercased().matches(of: #/(\d+(?:\.\d+)?)\s*(g|ml)\b/#).last,
+              match.output.2 == unit else { return nil }
+        return Double(match.output.1)
     }
 
     /// Trims stray punctuation and puts back the capital in "mL", which `clean` lowercased.

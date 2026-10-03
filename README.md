@@ -56,8 +56,9 @@ An iPhone + Apple Watch app for manually logging health data that Apple Watch do
   nutrition facts panel, or reads a photo you choose, and fills in a new food from it: the serving size and each
   nutrient it lists. Tap *Scan Label* in the food editor to fill in a food you're already making, such as one
   whose barcode isn't in Open Food Facts. Text is read on the iPhone with Apple's Vision framework, and photos
-  aren't kept. It reads US, Canadian and European labels. For European ones it uses the per 100 g column and
-  works out sodium from salt. Check the amounts before saving, since print can be misread.
+  aren't kept. It reads US, Canadian and European labels. For European ones it uses the per 100 g column, scaled
+  to the serving size when the label gives one in grams (or mL for drinks), and works out sodium from salt. Check
+  the amounts before saving, since print can be misread.
 - **Logging food again:** *Add Food* starts with your recent meals (two or more foods at the same meal) and the
   foods you've logged in the last 30 days. Tap ⊕ to log one again now, as much as last time, or tap the row to
   change the servings, meal or time first (a meal lets you leave foods out). Swipe right on a food in History
