@@ -22,6 +22,8 @@ struct EntryView: View {
     @State private var mealTime = BloodGlucoseMealTime.unspecified
     @State private var error: String?
     @State private var saved = false
+    /// A save is in flight, so another tap doesn't log the entry twice.
+    @State private var isSaving = false
     /// The edit saved but the original couldn't be deleted, so leave after the alert rather than save it twice.
     @State private var closeAfterError = false
     @FocusState private var focusedField: Field?
@@ -58,7 +60,7 @@ struct EntryView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                Button("Save", action: save).disabled(!isValid)
+                Button("Save", action: save).disabled(!isValid || isSaving)
             }
         }
         .toolbar {
@@ -318,13 +320,17 @@ struct EntryView: View {
     }
 
     private func save() {
+        guard !isSaving else { return }
+        isSaving = true
         Task {
             do {
                 try await saveEntry()
             } catch {
                 self.error = error.healthMessage
+                isSaving = false
                 return
             }
+            // From here the screen closes, so Save stays off.
             // Deleting only after the new entry saved means a failure can leave a duplicate, never lose the entry.
             if let editing {
                 do {

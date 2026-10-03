@@ -6,6 +6,8 @@ struct WatchEntryView: View {
     @Environment(HealthStore.self) private var health
     @Environment(\.dismiss) private var dismiss
     @State private var error: String?
+    /// A save is in flight, so another tap doesn't log the entry twice.
+    @State private var isSaving = false
 
     var body: some View {
         Group {
@@ -36,6 +38,7 @@ struct WatchEntryView: View {
                 }
             }
         }
+        .disabled(isSaving)
         .navigationTitle(metric.name)
         .alert("Couldn't Save", isPresented: .constant(error != nil)) {
             Button("OK") { error = nil }
@@ -45,6 +48,8 @@ struct WatchEntryView: View {
     }
 
     private func save(_ work: @escaping () async throws -> Void) {
+        guard !isSaving else { return }
+        isSaving = true
         Task {
             do {
                 try await work()
@@ -53,6 +58,7 @@ struct WatchEntryView: View {
             } catch {
                 WKHaptic.failure()
                 self.error = error.healthMessage
+                isSaving = false
             }
         }
     }
