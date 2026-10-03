@@ -35,23 +35,52 @@ final class CloudSettings {
 
     /// When each setting here last matched iCloud (the record's `updated`), kept on this device only.
     private static let syncedKey = "cloudSettingsSynced"
+    /// When each setting was changed here since the last sync. Kept until the sync, even across launches, so a
+    /// record from iCloud that's older than the edit doesn't replace it.
+    private static let editedKey = "cloudSettingsEdited"
 
     private let context: ModelContext
     private let onRemoteChange: () -> Void
     private var observers: [NSObjectProtocol] = []
     private var pending: Task<Void, Never>?
+    /// Each setting's value when last checked, to tell which ones a change notification was for.
+    private var lastSeen: [String: Any] = [:]
 
     init(container: ModelContainer, onRemoteChange: @escaping () -> Void) {
         context = container.mainContext
         self.onRemoteChange = onRemoteChange
+        for setting in Self.settings {
+            lastSeen[setting.key] = setting.defaults.object(forKey: setting.key)
+        }
         let center = NotificationCenter.default
         // Local edits, and records arriving from the user's other devices.
-        for name in [UserDefaults.didChangeNotification, .NSPersistentStoreRemoteChange] {
-            observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.scheduleSync() }
-            })
-        }
+        observers.append(center.addObserver(forName: UserDefaults.didChangeNotification, object: nil,
+                                            queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.noteLocalEdits()
+                self?.scheduleSync()
+            }
+        })
+        observers.append(center.addObserver(forName: .NSPersistentStoreRemoteChange, object: nil,
+                                            queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.scheduleSync() }
+        })
         sync()
+    }
+
+    /// Notes when each setting changed here. Runs as soon as defaults change rather than after the sync's wait,
+    /// since a record that arrives from iCloud during the wait can be older than the edit.
+    private func noteLocalEdits() {
+        let wasEdited = UserDefaults.standard.dictionary(forKey: Self.editedKey) as? [String: Date] ?? [:]
+        var edited = wasEdited
+        for setting in Self.settings {
+            let value = setting.defaults.object(forKey: setting.key)
+            if !Self.equal(value, lastSeen[setting.key]) {
+                lastSeen[setting.key] = value
+                edited[setting.key] = .now
+            }
+        }
+        if edited != wasEdited { UserDefaults.standard.set(edited, forKey: Self.editedKey) }
     }
 
     /// Waits for a burst of changes to settle, since one edit can touch several keys.
@@ -64,12 +93,15 @@ final class CloudSettings {
         }
     }
 
-    /// For each setting, takes iCloud's value if it changed since this device last saw it, otherwise uploads
-    /// this device's value if it differs. So the most recent edit wins, and a new device takes what's in iCloud.
+    /// For each setting, takes iCloud's value if it changed since this device last saw it and after any edit
+    /// here, otherwise uploads this device's value if it differs. So the most recent edit wins, and a new device
+    /// takes what's in iCloud.
     func sync() {
+        noteLocalEdits()
         guard let records = try? context.fetch(FetchDescriptor<SyncedSetting>()) else { return }
         let newest = removingDuplicates(records)
         let wasSynced = UserDefaults.standard.dictionary(forKey: Self.syncedKey) as? [String: Date] ?? [:]
+        let edited = UserDefaults.standard.dictionary(forKey: Self.editedKey) as? [String: Date] ?? [:]
         var synced = wasSynced
         var changedHere = false
 
@@ -77,8 +109,11 @@ final class CloudSettings {
             let local = setting.defaults.object(forKey: setting.key)
             let record = newest[setting.key]
             let remote = record.flatMap { Self.decode($0.value) }
-            if let record, record.updated > synced[setting.key] ?? .distantPast {
+            if let record, record.updated > synced[setting.key] ?? .distantPast,
+               record.updated > edited[setting.key] ?? .distantPast {
                 if !Self.equal(local, remote) {
+                    // Seen before it's set, so the change notification isn't taken for an edit here.
+                    lastSeen[setting.key] = remote
                     setting.defaults.set(remote, forKey: setting.key)
                     changedHere = true
                 }
@@ -95,6 +130,7 @@ final class CloudSettings {
         // so an unconditional write would sync again every second forever.
         if context.hasChanges { try? context.save() }
         if synced != wasSynced { UserDefaults.standard.set(synced, forKey: Self.syncedKey) }
+        if !edited.isEmpty { UserDefaults.standard.removeObject(forKey: Self.editedKey) }
         if changedHere { onRemoteChange() }
     }
 
