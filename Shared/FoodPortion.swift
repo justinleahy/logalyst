@@ -207,19 +207,62 @@ extension FoodPortion {
 
 /// Reads a serving's weight from how it's written on a label, such as "1 bar (30 g)".
 nonisolated enum ServingWeight {
-    /// The weight in grams when the text states exactly one in grams or kilograms, as in "1 bar (30 g)", "30g" or
-    /// "3/4 cup (170 g)". Nil for volumes ("250 mL", "8 fl oz"), bare ounces (which could be fluid ounces), several
-    /// different weights, or none, so a weight is never guessed.
+    /// What a serving's text says it weighs.
+    enum Reading: Equatable {
+        /// No weight in grams or kilograms, as for "1 cup", "250 mL" or "1 oz" (which could be fluid ounces).
+        case unstated
+        /// Exactly one weight, as in "1 bar (30 g)", "30g", "3/4 cup (170 g)", "1/2 g" or ".5 g".
+        case grams(Double)
+        /// A weight that isn't one amount: a range ("20-30 g"), a multiple ("2 x 15 g"), several different
+        /// weights, or zero.
+        case ambiguous
+    }
+
+    /// The weight in grams when the text states exactly one, and otherwise nil, so a weight is never guessed.
     static func grams(in text: String) -> Double? {
+        guard case .grams(let grams) = reading(of: text) else { return nil }
+        return grams
+    }
+
+    static func reading(of text: String) -> Reading {
         var text = text.lowercased()
         // Thousands separators, as in "1,000 g", and decimal commas, as in "30,5 g".
         text = text.replacing(#/(\d),(\d{3})(?!\d)/#) { "\($0.output.1)\($0.output.2)" }
         text = text.replacing(#/(\d),(\d{1,2})(?!\d)/#) { "\($0.output.1).\($0.output.2)" }
-        let weights = text.matches(of: #/(\d+(?:\.\d+)?)\s*(kg|kilograms?|g|grams?|gr)\b/#).compactMap { match in
-            Double(match.output.1).map { match.output.2.hasPrefix("k") ? $0 * 1000 : $0 }
+        // Each amount in grams or kilograms in full, with what comes right before or after it that would make it
+        // part of a multiple ("2 x 15 g", "15 g x 2", "2 bars x 15 g") or a range ("20-30 g", "20 to 30 g").
+        let weight = #/
+            (?<multiple> [\d.] \s* [x×*] \s* | (?: ^ | [\s(] ) [x×] \s* )?
+            (?<range> \d \s* (?: - | – | — | to ) \s* )?
+            (?<amount> \d+ \s+ \d+/\d+ | \d+/\d+ | \d*\.\d+ | \d+ ) \s*
+            (?<unit> kg | kilograms? | g | grams? | gr ) \b
+            (?<multipliedBy> \s* [x×*] \s* \d )?
+            /#
+        var weights: [Double] = []
+        for match in text.matches(of: weight) {
+            guard match.output.multiple == nil, match.output.range == nil, match.output.multipliedBy == nil,
+                  let amount = number(match.output.amount), amount.isFinite, amount > 0 else { return .ambiguous }
+            weights.append(match.output.unit.hasPrefix("k") ? amount * 1000 : amount)
         }
-        guard let first = weights.first, first > 0, weights.allSatisfy({ $0 == first }) else { return nil }
-        return first
+        guard let first = weights.first else { return .unstated }
+        return weights.allSatisfy { $0 == first } ? .grams(first) : .ambiguous
+    }
+
+    /// "30", "1.5", ".5", "1/2" or "1 1/2".
+    private static func number(_ text: Substring) -> Double? {
+        let parts = text.split(whereSeparator: \.isWhitespace)
+        if parts.count == 2 {
+            guard let whole = Double(parts[0]), let fraction = number(parts[1]) else { return nil }
+            return whole + fraction
+        }
+        let fraction = text.split(separator: "/")
+        if fraction.count == 2 {
+            guard let numerator = Double(fraction[0]), let denominator = Double(fraction[1]), denominator > 0 else {
+                return nil
+            }
+            return numerator / denominator
+        }
+        return Double(text)
     }
 
     /// Whether the serving is just a weight, like "100 g", so it's more natural to enter by weight than by serving.

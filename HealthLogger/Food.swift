@@ -108,6 +108,13 @@ enum FoodDatabase {
     /// The serving size used when a product lists amounts only per 100 g or 100 mL and which isn't known.
     static let per100Serving = "100 g"
 
+    /// Open Food Facts asks apps to identify themselves by name, version and a contact address, as
+    /// "Logalyst/1.1 (support@logalyst.app)". The privacy policy lists what this sends.
+    static let userAgent: String = {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
+        return "Logalyst/\(version) (support@logalyst.app)"
+    }()
+
     /// A draft prefilled from the database, or nil if the product isn't listed.
     static func lookUp(barcode: String) async throws -> FoodDraft? {
         guard !barcode.isEmpty, barcode.allSatisfy({ $0.isASCII && $0.isNumber }) else { return nil }
@@ -115,8 +122,7 @@ enum FoodDatabase {
         components.queryItems = [URLQueryItem(name: "fields", value: "product_name,brands,serving_size,"
             + "serving_quantity,serving_quantity_unit,quantity,product_quantity_unit,nutriments")]
         var request = URLRequest(url: components.url!)
-        // Open Food Facts asks apps to identify themselves.
-        request.setValue("HealthLogger/1.0 (iOS)", forHTTPHeaderField: "User-Agent")
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
 
         let (data, response) = try await URLSession.shared.data(for: request)
         if (response as? HTTPURLResponse)?.statusCode == 404 { return nil }
@@ -142,11 +148,7 @@ enum FoodDatabase {
             source: .database)
         if perServing {
             draft.servingSize = servingSize
-            // The weight printed in the serving, like "1 bar (40 g)", or the database's own serving amount when
-            // it's in grams. A serving in mL has no weight.
-            draft.gramsPerServing = ServingWeight.grams(in: servingSize)
-                ?? ((product["serving_quantity_unit"] as? String)?.lowercased() == "g"
-                    ? number(product["serving_quantity"]).flatMap { $0 > 0 ? $0 : nil } : nil)
+            draft.gramsPerServing = servingWeight(printed: servingSize, in: product)
         } else {
             // Open Food Facts gives these per 100 g, or per 100 mL for liquids. Only a product known to be sold by
             // weight gets a 100 g serving weight; a drink mustn't.
@@ -170,6 +172,25 @@ enum FoodDatabase {
             draft.nutrients["dietaryEnergyConsumed"] = (kilojoules / 4.184).rounded()
         }
         return draft
+    }
+
+    /// A per-serving product's weight: the one printed in its serving, like "1 bar (40 g)", or the database's own
+    /// serving amount when it's in grams, from which its per-serving values are worked out. Nil when they disagree,
+    /// or the printed one isn't a single amount (like "2 x 30 g"), since it's then unclear what the nutrition is
+    /// for. A serving in mL has no weight.
+    private static func servingWeight(printed: String, in product: [String: Any]) -> Double? {
+        let listed = (product["serving_quantity_unit"] as? String)?.lowercased() == "g"
+            ? number(product["serving_quantity"]).flatMap { $0 > 0 ? $0 : nil } : nil
+        switch ServingWeight.reading(of: printed) {
+        case .unstated:
+            return listed
+        case .grams(let grams):
+            // Allowing for the database rounding it.
+            if let listed, abs(listed - grams) > max(0.5, grams * 0.01) { return nil }
+            return grams
+        case .ambiguous:
+            return nil
+        }
     }
 
     private enum Per100Unit { case grams, milliliters }

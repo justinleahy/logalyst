@@ -236,6 +236,95 @@ final class FoodEditTests {
         try await cleanUp()
     }
 
+    /// Interrupted after the correction saved, then the cleanup on relaunch fails too: the edit is noted as saved,
+    /// so History still offers to finish it, and a later try does.
+    @Test func anInterruptedEditWhoseCleanupFailsStaysListed() async throws {
+        let original = try await logGranola()
+        var food = try #require(original.food)
+        food.servings = 3
+        struct Terminated: Error {}
+        health.stopForFault = { throw Terminated() }
+        health.editFault = .stop
+        await #expect(throws: Terminated.self) {
+            try await self.health.saveFoods([food], meal: .breakfast, date: original.date, replacing: original)
+        }
+
+        let relaunched = HealthStore(syncs: false, editDefaults: defaults)
+        relaunched.editFault = .delete
+        await relaunched.finishPendingEdits()
+        let edit = try #require(relaunched.unfinishedEdits.first)
+        #expect(edit.replacementSaved)
+        #expect(try await entries(using: relaunched).count == 2)
+
+        // And again after another relaunch, from the journal alone.
+        let again = HealthStore(syncs: false, editDefaults: defaults)
+        #expect(again.unfinishedEdits.map(\.id) == [edit.id])
+        try await again.finishEdit(edit)
+        #expect(again.pendingEdits.isEmpty)
+        #expect(try await entries(using: again).map(\.id) == [edit.replacement])
+        try await cleanUp()
+    }
+
+    /// Deleting the correction of an unfinished edit from History drops the edit, so the original can't then be
+    /// removed too.
+    @Test func deletingTheCorrectionKeepsTheOriginal() async throws {
+        let original = try await logGranola()
+        var food = try #require(original.food)
+        food.servings = 2
+        health.editFault = .delete
+        await #expect(throws: EditError.self) {
+            try await self.health.saveFoods([food], meal: .breakfast, date: original.date, replacing: original)
+        }
+        let edit = try #require(health.unfinishedEdits.first)
+        let correction = try #require(try await entries().first { $0.id == edit.replacement })
+        try await health.delete(correction)
+        #expect(health.pendingEdits.isEmpty)
+
+        // Remove Original, from a History that hadn't refreshed yet.
+        await #expect(throws: EditError.self) { try await self.health.finishEdit(edit) }
+        #expect(try await entries().map(\.id) == [original.id])
+        try await cleanUp()
+    }
+
+    /// The same when the correction is deleted outside the app, such as in the Health app.
+    @Test func finishingAfterTheCorrectionIsDeletedElsewhereKeepsTheOriginal() async throws {
+        let original = try await logGranola()
+        var food = try #require(original.food)
+        food.servings = 2
+        health.editFault = .delete
+        await #expect(throws: EditError.self) {
+            try await self.health.saveFoods([food], meal: .breakfast, date: original.date, replacing: original)
+        }
+        let edit = try #require(health.unfinishedEdits.first)
+        let correction = try #require(try await health.sample(of: HKCorrelationType(.food), id: edit.replacement))
+        try await raw.delete([correction] + Array((correction as! HKCorrelation).objects))
+        #expect(health.unfinishedEdits == [edit])
+
+        do {
+            try await health.finishEdit(edit)
+            Issue.record("Finishing should have reported that the correction is gone.")
+        } catch EditError.correctionMissing {}
+        #expect(health.pendingEdits.isEmpty)
+        #expect(try await entries().map(\.id) == [original.id])
+        try await cleanUp()
+    }
+
+    /// Deleting the original of an unfinished edit from History finishes it by hand: the correction stays.
+    @Test func deletingTheOriginalDropsTheEdit() async throws {
+        let original = try await logGranola()
+        var food = try #require(original.food)
+        food.servings = 2
+        health.editFault = .delete
+        await #expect(throws: EditError.self) {
+            try await self.health.saveFoods([food], meal: .breakfast, date: original.date, replacing: original)
+        }
+        let edit = try #require(health.unfinishedEdits.first)
+        try await health.delete(original)
+        #expect(health.pendingEdits.isEmpty)
+        #expect(try await entries().map(\.id) == [edit.replacement])
+        try await cleanUp()
+    }
+
     /// An edit cut short before its correction was saved leaves just the original, so it's dropped on relaunch.
     @Test func anEditInterruptedBeforeSavingIsDroppedOnRelaunch() async throws {
         let original = try await logGranola()

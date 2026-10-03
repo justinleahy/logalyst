@@ -82,7 +82,8 @@ When you scan or type a barcode that doesn't match one of your saved foods, Loga
 the app sends Open Food Facts:
 
 - the barcode number, and
-- the app's name, which Open Food Facts asks apps to include.
+- the app's name and version, and our support email address, which Open Food Facts asks apps to include so it
+  can contact the app's developer.
 
 As with any website, Open Food Facts also receives your device's IP address when it answers the request. Nothing
 else is sent: no health data, name, account or device identifier. Open Food Facts' handling of this data is

@@ -5,8 +5,9 @@ import SwiftData
 // Siri and Shortcuts actions for saved foods, recipes and recent meals. iPhone only: saved foods and recipes are
 // kept by the iPhone app, and the Watch doesn't have them.
 
-/// A saved food or recipe, for Siri and Shortcuts. It's identified by its name (and brand), the way the app tells
-/// foods apart, so a shortcut keeps working on the user's other iPhones, where iCloud brings the same foods.
+/// A saved food or recipe, for Siri and Shortcuts. It's identified by its name (and brand) and when it was created,
+/// which iCloud brings to the user's other iPhones with it, so a shortcut keeps working there, and two foods with
+/// the same name are each offered and each logged as themselves.
 struct SavedFoodEntity: AppEntity {
     let id: String
     let name: String
@@ -21,53 +22,78 @@ struct SavedFoodEntity: AppEntity {
                               image: .init(systemName: isRecipe ? "book.closed" : "fork.knife"))
     }
 
+    /// Pass an `id` to keep the one a shortcut was saved with, which may differ slightly from this record's.
     @MainActor
-    init(_ food: Food) {
-        id = Self.id(food: food.name, brand: food.brand)
+    init(_ food: Food, id: String? = nil) {
+        self.id = id ?? Self.identifier(Self.key(food: food), created: food.created)
         name = food.name
         detail = food.summary
         isRecipe = false
     }
 
     @MainActor
-    init(_ recipe: Recipe) {
-        id = Self.id(recipe: recipe.name)
+    init(_ recipe: Recipe, id: String? = nil) {
+        self.id = id ?? Self.identifier(Self.key(recipe: recipe), created: recipe.created)
         name = recipe.name
         detail = recipe.summary
         isRecipe = true
     }
 
-    private static func id(food name: String, brand: String) -> String {
-        ["food", name.lowercased(), brand.lowercased()].joined(separator: "\u{1F}")
+    private static let separator: Character = "\u{1F}"
+
+    @MainActor
+    private static func key(food: Food) -> String {
+        ["food", food.name.lowercased(), food.brand.lowercased()].joined(separator: String(separator))
     }
 
-    private static func id(recipe name: String) -> String {
-        ["recipe", name.lowercased()].joined(separator: "\u{1F}")
+    @MainActor
+    private static func key(recipe: Recipe) -> String {
+        ["recipe", recipe.name.lowercased()].joined(separator: String(separator))
+    }
+
+    /// The key, then the creation time in milliseconds.
+    private static func identifier(_ key: String, created: Date) -> String {
+        key + String(separator) + String(Int64((created.timeIntervalSince1970 * 1000).rounded()))
+    }
+
+    /// Which of these records, in `SavedFoodQuery`'s order, an ID is: the one with the same key created closest to
+    /// its time. iCloud may keep that time less precisely than this iPhone, so it needn't match exactly, but one
+    /// created a second or more apart is a different record. Nil if there's none, such as after it was deleted or
+    /// renamed.
+    private static func match<Record>(_ id: String, in records: [Record], key: (Record) -> String,
+                                      created: (Record) -> Date) -> Record? {
+        guard let split = id.lastIndex(of: separator), let milliseconds = Int64(id[id.index(after: split)...]) else {
+            return nil
+        }
+        let (wanted, time) = (String(id[..<split]), Date(timeIntervalSince1970: Double(milliseconds) / 1000))
+        var best: (record: Record, gap: TimeInterval)?
+        for record in records where key(record) == wanted {
+            let gap = abs(created(record).timeIntervalSince(time))
+            if gap < min(1, best?.gap ?? 1) { best = (record, gap) }
+        }
+        return best?.record
+    }
+
+    @MainActor
+    static func food(for id: String, in foods: [Food]) -> Food? {
+        match(id, in: foods, key: key(food:), created: \.created)
+    }
+
+    @MainActor
+    static func recipe(for id: String, in recipes: [Recipe]) -> Recipe? {
+        match(id, in: recipes, key: key(recipe:), created: \.created)
     }
 
     /// The saved food or recipe this stands for: one serving of it, and how to mark it as just logged. Nil if it
-    /// was deleted or renamed. If two have the same name, the one logged most recently.
+    /// was deleted or renamed.
     @MainActor
     func resolve(in context: ModelContext) -> (portion: FoodPortion, markLogged: () -> Void)? {
         if isRecipe {
-            let recipes = (try? context.fetch(FetchDescriptor<Recipe>())) ?? []
-            guard let recipe = recipes.filter({ Self.id(recipe: $0.name) == id }).max(by: Self.loggedEarlier) else {
-                return nil
-            }
+            guard let recipe = Self.recipe(for: id, in: SavedFoodQuery.recipes(in: context)) else { return nil }
             return (recipe.portion, { recipe.lastLogged = .now })
         }
-        let foods = (try? context.fetch(FetchDescriptor<Food>())) ?? []
-        guard let food = foods.filter({ Self.id(food: $0.name, brand: $0.brand) == id }).max(by: Self.loggedEarlier)
-        else { return nil }
+        guard let food = Self.food(for: id, in: SavedFoodQuery.foods(in: context)) else { return nil }
         return (food.portion, { food.lastLogged = .now })
-    }
-
-    private static func loggedEarlier(_ a: Food, _ b: Food) -> Bool {
-        (a.lastLogged ?? .distantPast) < (b.lastLogged ?? .distantPast)
-    }
-
-    private static func loggedEarlier(_ a: Recipe, _ b: Recipe) -> Bool {
-        (a.lastLogged ?? .distantPast) < (b.lastLogged ?? .distantPast)
     }
 }
 
@@ -76,7 +102,12 @@ struct SavedFoodEntity: AppEntity {
 struct SavedFoodQuery: EntityStringQuery {
     @MainActor
     func entities(for identifiers: [SavedFoodEntity.ID]) async throws -> [SavedFoodEntity] {
-        all().filter { identifiers.contains($0.id) }
+        let context = HealthLoggerApp.sharedContainer.mainContext
+        let (foods, recipes) = (Self.foods(in: context), Self.recipes(in: context))
+        return identifiers.compactMap { id in
+            if let food = SavedFoodEntity.food(for: id, in: foods) { return SavedFoodEntity(food, id: id) }
+            return SavedFoodEntity.recipe(for: id, in: recipes).map { SavedFoodEntity($0, id: id) }
+        }
     }
 
     /// Foods whose name has every word said, in any order, or that's said in full within a longer phrase.
@@ -98,16 +129,32 @@ struct SavedFoodQuery: EntityStringQuery {
     @MainActor
     private func all() -> [SavedFoodEntity] {
         let context = HealthLoggerApp.sharedContainer.mainContext
-        let foods = ((try? context.fetch(FetchDescriptor<Food>())) ?? []).sorted { a, b in
+        let entities = Self.foods(in: context).map { SavedFoodEntity($0) }
+            + Self.recipes(in: context).map { SavedFoodEntity($0) }
+        // Records created in the same millisecond have the same ID, which finds the first of them.
+        var seen: Set<String> = []
+        return entities.filter { seen.insert($0.id).inserted }
+    }
+
+    /// Saved foods: favorites, then the most recently logged, then by name.
+    @MainActor
+    static func foods(in context: ModelContext) -> [Food] {
+        ((try? context.fetch(FetchDescriptor<Food>())) ?? []).sorted { a, b in
             if a.isFavorite != b.isFavorite { return a.isFavorite }
             let (dateA, dateB) = (a.lastLogged ?? .distantPast, b.lastLogged ?? .distantPast)
-            return dateA != dateB ? dateA > dateB : a.name.localizedStandardCompare(b.name) == .orderedAscending
+            if dateA != dateB { return dateA > dateB }
+            let byName = a.name.localizedStandardCompare(b.name)
+            return byName != .orderedSame ? byName == .orderedAscending : a.created < b.created
         }
-        let recipes = ((try? context.fetch(FetchDescriptor<Recipe>())) ?? []).sorted {
-            ($0.lastLogged ?? .distantPast) > ($1.lastLogged ?? .distantPast)
+    }
+
+    /// Recipes, most recently logged first.
+    @MainActor
+    static func recipes(in context: ModelContext) -> [Recipe] {
+        ((try? context.fetch(FetchDescriptor<Recipe>())) ?? []).sorted { a, b in
+            let (dateA, dateB) = (a.lastLogged ?? .distantPast, b.lastLogged ?? .distantPast)
+            return dateA != dateB ? dateA > dateB : a.created < b.created
         }
-        var seen: Set<String> = []
-        return (foods.map(SavedFoodEntity.init) + recipes.map(SavedFoodEntity.init)).filter { seen.insert($0.id).inserted }
     }
 }
 
@@ -205,9 +252,7 @@ struct LogRecentMealIntent: AppIntent {
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let meal = meal.meal
         let health = await HealthStore.standalone()
-        let since = Calendar.current.date(byAdding: .day, value: -Recents.days, to: .now)!
-        let entries = try await health.recentEntries(of: [], since: since, limit: 500)
-        guard let last = Recents.lastMeal(meal, in: entries) else {
+        guard let last = try await Recents.lastMeal(meal, in: health) else {
             throw IntentMessage("There's no \(meal.title.lowercased()) from the last \(Recents.days) days to log again.")
         }
         try await health.saveFoods(last.foods, meal: meal, date: .now)

@@ -21,7 +21,8 @@ struct ServingWeightTests {
     @Test(arguments: [
         ("1 bar (30 g)", 30.0), ("30g", 30), ("3/4 cup (170 g)", 170), ("100 g", 100), ("1 oz (28 g)", 28),
         ("28g/1oz", 28), ("Serving 30,5 g", 30.5), ("1,5 kg", 1500), ("1 package (28 g)", 28), ("2 grams", 2),
-        ("1 bar (30 g) = 30 g", 30),
+        ("1 bar (30 g) = 30 g", 30), ("1/2 g", 0.5), (".5 g", 0.5), ("1 1/2 g", 1.5), ("1/2 cup (60 g)", 60),
+        ("1/2 kg", 500), ("1,000 g", 1000),
     ])
     func readsAStatedGramWeight(text: String, grams: Double) {
         #expect(ServingWeight.grams(in: text) == grams)
@@ -32,6 +33,18 @@ struct ServingWeightTests {
                       "1 portion (330 ml)", "2 x 15 g (30 g)", "1 medium"])
     func neverGuessesAWeight(text: String) {
         #expect(ServingWeight.grams(in: text) == nil)
+    }
+
+    /// A multiple or a range is read in full, as no one weight, rather than as its last number.
+    @Test(arguments: ["2 x 30 g", "2x30g", "2 × 30 g", "30 g x 2", "2 biscuits x 15 g", "20-30 g", "20 – 30 g",
+                      "20 to 30 g", "1.5-2 g", "1/0 g"])
+    func multiplesAndRangesAreAmbiguous(text: String) {
+        #expect(ServingWeight.reading(of: text) == .ambiguous)
+    }
+
+    @Test func noWeightIsUnstated() {
+        #expect(ServingWeight.reading(of: "1 cup (240 mL)") == .unstated)
+        #expect(ServingWeight.reading(of: "1 bar") == .unstated)
     }
 
     @Test func weightOnlyServings() {

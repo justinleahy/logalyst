@@ -83,6 +83,60 @@ final class FoodIntentTests {
         try await cleanUp(names: [oats.name], since: start)
     }
 
+    /// Two saved foods with the same name and brand are each offered, and the one picked is the one logged, even
+    /// when the other was logged more recently.
+    @Test func duplicateFoodsAreEachOfferedAndLoggedAsThemselves() async throws {
+        let start = Date.now.addingTimeInterval(-60)
+        let favorite = food("Oats", brand: "Quaker", calories: 200)
+        favorite.isFavorite = true
+        favorite.created = .now.addingTimeInterval(-3600)
+        let other = food("Oats", brand: "Quaker", calories: 100)
+        other.lastLogged = .now.addingTimeInterval(-120)
+        try context.save()
+
+        let offered = try await SavedFoodQuery().entities(matching: favorite.name)
+        #expect(offered.count == 2)
+        #expect(Set(offered.map(\.id)).count == 2)
+        let picked = try #require(offered.first)
+        #expect(picked.detail.contains("200 kcal"))
+        #expect(try await SavedFoodQuery().entities(for: [picked.id]).map(\.detail) == [picked.detail])
+
+        _ = try await LogFoodIntent(food: picked, meal: .snack).perform()
+        let logged = try await entries(named: [favorite.name], since: start)
+        #expect(logged.map { $0.food?.calories } == [200])
+        try await cleanUp(names: [favorite.name], since: start)
+    }
+
+    @Test func duplicateRecipesAreEachOffered() async throws {
+        let ingredient = food("Rice")
+        let first = Recipe(name: "Rice Bowl \(tag)", servings: 1, ingredients: [ingredient.portion])
+        first.created = .now.addingTimeInterval(-3600)
+        let second = Recipe(name: "Rice Bowl \(tag)", servings: 2, ingredients: [ingredient.portion])
+        for recipe in [first, second] {
+            context.insert(recipe)
+            madeRecipes.append(recipe)
+        }
+        try context.save()
+        let offered = try await SavedFoodQuery().entities(matching: first.name).filter(\.isRecipe)
+        #expect(Set(offered.map(\.id)).count == 2)
+        try await cleanUp(names: [], since: .now)
+    }
+
+    /// A shortcut from another iPhone, whose iCloud copy of the food may keep its creation time less precisely,
+    /// still finds it.
+    @Test func anIDAMillisecondOffStillFindsItsFood() async throws {
+        let oats = food("Oats")
+        try context.save()
+        let id = SavedFoodEntity(oats).id
+        let split = try #require(id.lastIndex(of: "\u{1F}"))
+        let milliseconds = try #require(Int64(id[id.index(after: split)...]))
+        let nearby = String(id[...split]) + String(milliseconds + 1)
+        #expect(SavedFoodEntity.food(for: nearby, in: [oats]) === oats)
+        let later = String(id[...split]) + String(milliseconds + 5000)
+        #expect(SavedFoodEntity.food(for: later, in: [oats]) == nil)
+        try await cleanUp(names: [], since: .now)
+    }
+
     @Test func aFoodThatsGoneIsReportedAndNothingIsLogged() async throws {
         let start = Date.now.addingTimeInterval(-60)
         let gone = food("Gone")
@@ -115,6 +169,33 @@ final class FoodIntentTests {
         #expect(today.allSatisfy { $0.meal == .snack })
         #expect(today.first { $0.title == cheese.name }?.food?.servings == 2)
         try await cleanUp(names: [apple.name, cheese.name], since: snackTime.addingTimeInterval(-60))
+    }
+
+    /// However much else was logged since, the whole of the last snack is logged again. 500 newer entries were
+    /// once enough to hide it.
+    @Test func theLastMealIsWholeAfterManyNewerEntries() async throws {
+        let calendar = Calendar.current
+        let yesterday = calendar.date(byAdding: .day, value: -1, to: calendar.startOfDay(for: .now))!
+        let snackTime = calendar.date(bySettingHour: 10, minute: 0, second: 0, of: yesterday)!
+        let apple = FoodPortion(name: "Apple \(tag)", servingSize: "1 medium", nutrients: ["dietaryEnergyConsumed": 95])
+        let cheese = FoodPortion(name: "Cheese \(tag)", servingSize: "1 slice", nutrients: ["dietaryEnergyConsumed": 110])
+        try await health.saveFoods([apple, cheese], meal: .snack, date: snackTime)
+        let filler = FoodPortion(name: "Filler \(tag)", nutrients: ["dietaryEnergyConsumed": 1])
+        try await health.saveFoods(Array(repeating: filler, count: 500), meal: .lunch,
+                                   date: snackTime.addingTimeInterval(3600))
+        let start = Date.now.addingTimeInterval(-60)
+
+        _ = try await LogRecentMealIntent(meal: .snack).perform()
+
+        let today = try await entries(named: [apple.name, cheese.name], since: start)
+        #expect(Set(today.map(\.title)) == [apple.name, cheese.name])
+        // Remove all 504 entries at once.
+        let names = [apple.name, cheese.name, filler.name]
+        let ours = try await health.recentEntries(of: [], since: snackTime.addingTimeInterval(-60), limit: nil)
+            .filter { names.contains($0.title) }
+        let objects = ours.flatMap { [$0.sample] + Array(($0.sample as? HKCorrelation)?.objects ?? []) }
+        try await HKHealthStore().delete(objects)
+        try await cleanUp(names: names, since: snackTime.addingTimeInterval(-60))
     }
 
     @Test func recentMealsChooseByMealAndSkipToday() {

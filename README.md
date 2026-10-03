@@ -59,17 +59,20 @@ iPhones that have used Logalyst before go straight to the app.
   of each nutrient, and reads as "35 g". Add the serving weight in the food editor; barcode lookups and label
   scans fill it in when the serving is given in grams, and for a food saved before 1.1 whose serving size states
   a weight, like "1 bar (30 g)", the editor offers to use it. A serving given only as a volume (mL or fl oz) has
-  no weight, since that would need the food's density. Each one is saved to Health as a single food entry, so
+  no weight, since that would need the food's density, and nor does one whose weight isn't a single amount, like
+  "2 x 30 g" or "20-30 g", or whose printed weight disagrees with Open Food Facts' own. Each one is saved to Health as a single food entry, so
   Health shows it by name and History lists it once. Each food is
   logged at a meal (breakfast, lunch, dinner or snack), which follows the time until you pick one, and the
   Nutrition tab lists today's food by meal. Scan a
   barcode to jump straight to a saved food, or to fill in a new one from
-  [Open Food Facts](https://world.openfoodfacts.org), a free, open food database. You can also type the number
-  if the camera can't read it. Saved foods are kept on the iPhone and synced through iCloud (see below).
+  [Open Food Facts](https://world.openfoodfacts.org), a free, open food database (its data is under the
+  [Open Database License](https://opendatacommons.org/licenses/odbl/1-0/), which the editor links to). You can
+  also type the number if the camera can't read it. Saved foods are kept on the iPhone and synced through iCloud (see below).
 - **Nutrition labels:** *Scan Nutrition Label* (in the Nutrition tab, or under ＋ in Add Food) photographs a
   nutrition facts panel, or reads a photo you choose, and fills in a new food from it: the serving size and each
   nutrient it lists. Tap *Scan Label* in the food editor to fill in a food you're already making, such as one
-  whose barcode isn't in Open Food Facts. Text is read on the iPhone with Apple's Vision framework, and photos
+  whose barcode isn't in Open Food Facts. Scanning a label for a different serving size replaces all the food's
+  nutrition, so an amount the scan misses is left empty rather than kept from the old serving. Text is read on the iPhone with Apple's Vision framework, and photos
   aren't kept. It reads US, Canadian and European labels. For European ones it uses the per 100 g column, scaled
   to the serving size when the label gives one in grams (or mL for drinks), and works out sodium from salt. Check
   the amounts before saving, since print can be misread.
@@ -111,7 +114,8 @@ iPhones that have used Logalyst before go straight to the app.
   The edit is noted on the iPhone first, so it can be finished later without saving the correction twice: if the
   original can't be deleted, you can try again right away, or later from History (and the Nutrition tab), which
   lists the unfinished edit with *Remove Original* and *Keep Both*; if the app closes partway, the edit is
-  finished the next time it opens.
+  finished the next time it opens, or listed there if it still can't be. Deleting either entry of an unfinished
+  edit finishes it, and *Remove Original* keeps the original if the correction has since been deleted.
 - **Widgets** (iPhone Home Screen, Lock Screen and Control Center):
   - *Water*: today's water against your goal, with buttons that log a glass without opening the app.
   - *Nutrition*: calories and nutrients against your daily goals. On the Lock Screen it shows a calorie gauge,
@@ -130,7 +134,8 @@ iPhones that have used Logalyst before go straight to the app.
     value and unit, which makes automations like "log 95 mg of caffeine when I arrive at the coffee shop" possible.
   - *Log Food* (iPhone): "Log oatmeal in Logalyst" logs a serving of a saved food or recipe; Siri asks which one
     when a name fits several, like "yogurt". In Shortcuts you can set the servings and the meal (otherwise the usual
-    one for the time). Foods are found by name, so a shortcut works on your other iPhones too.
+    one for the time). Foods are found by name and when they were made, so a shortcut works on your other iPhones
+    too, and two foods with the same name are offered (and logged) separately.
   - *Log Last Meal Again* (iPhone): "Log my last breakfast again in Logalyst" logs the foods from your most recent
     breakfast (or lunch, dinner or snack) before today, in the last 30 days, at the same meal, now.
   - Every phrase has to include the app's name. Siri says what was saved and, for intake, today's total. Like

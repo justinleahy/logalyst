@@ -47,6 +47,9 @@ private struct IncompleteEditAlert: ViewModifier {
             do {
                 try await health.finishEdit(edit)
                 onDone()
+            } catch EditError.correctionMissing {
+                // Deleted elsewhere meanwhile: the original is the only entry, and History lists it as it is.
+                onDone()
             } catch {
                 incomplete = IncompleteEdit(EditError.originalRemains(edit, error))
             }

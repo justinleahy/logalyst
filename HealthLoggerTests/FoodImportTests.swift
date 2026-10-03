@@ -43,6 +43,34 @@ struct OpenFoodFactsTests {
         #expect(draft.gramsPerServing == 45)
     }
 
+    /// A serving of several pieces isn't read as one piece's weight, and the database's total isn't taken without
+    /// the printed one to confirm it, so 30 g of it can't log a whole 60 g serving's nutrition.
+    @Test func aMultipleServingHasNoWeight() throws {
+        let draft = try draft("""
+            {"product_name":"Crackers","serving_size":"2 x 30 g","serving_quantity":60,"serving_quantity_unit":"g",
+             "nutriments":{"energy-kcal_serving":240,"proteins_serving":6}}
+            """)
+        #expect(draft.servingSize == "2 x 30 g")
+        #expect(draft.gramsPerServing == nil)
+        #expect(draft.nutrients["dietaryEnergyConsumed"] == 240)
+    }
+
+    @Test func aPrintedWeightTheDatabaseDisagreesWithIsntUsed() throws {
+        let draft = try draft("""
+            {"product_name":"Bar","serving_size":"1 bar (30 g)","serving_quantity":45,"serving_quantity_unit":"g",
+             "nutriments":{"energy-kcal_serving":190,"proteins_serving":20}}
+            """)
+        #expect(draft.gramsPerServing == nil)
+    }
+
+    @Test func aPrintedWeightTheDatabaseRoundsIsUsed() throws {
+        let draft = try draft("""
+            {"product_name":"Chips","serving_size":"1 oz (28.35 g)","serving_quantity":28.4,"serving_quantity_unit":"g",
+             "nutriments":{"energy-kcal_serving":150,"fat_serving":10}}
+            """)
+        #expect(draft.gramsPerServing == 28.35)
+    }
+
     /// Per 100 g for a product sold by weight, like Nutella (3017620422003), which lists no serving.
     @Test func per100GramsForAFoodSoldByWeight() throws {
         let draft = try draft("""
@@ -103,6 +131,32 @@ struct NutritionLabelWeightTests {
         #expect(draft.servingSize == "1 cup (240 mL)")
         // The new serving replaces the old one, and with it the old weight.
         #expect(draft.gramsPerServing == nil)
+    }
+
+    /// Rescanning a food's label for a different serving replaces all its nutrition: an amount the new scan missed
+    /// isn't kept from the old serving.
+    @Test func rescanningForADifferentServingClearsWhatItDoesntList() throws {
+        let label = try #require(label(["Serving size 1 bar (50 g)", "Calories 200", "Protein 10g"]))
+        var draft = FoodDraft(servingSize: "100 g", gramsPerServing: 100, nutrients: [
+            "dietaryEnergyConsumed": 400, "dietaryProtein": 20, "dietaryFatTotal": 10,
+        ])
+        draft.apply(label)
+        #expect(draft.gramsPerServing == 50)
+        #expect(draft.nutrients["dietaryEnergyConsumed"] == 200)
+        #expect(draft.nutrients["dietaryProtein"] == 10)
+        #expect(draft.nutrients["dietaryFatTotal"] == nil)
+    }
+
+    /// For the same serving, an amount the scan missed is still right, so it stays.
+    @Test func rescanningTheSameServingKeepsWhatItDoesntList() throws {
+        let label = try #require(label(["Serving size 2/3 cup (55g)", "Calories 240", "Protein 4g"]))
+        var draft = FoodDraft(servingSize: "2/3 cup (55g)", gramsPerServing: 55, nutrients: [
+            "dietaryEnergyConsumed": 230, "dietaryProtein": 3, "dietaryFatTotal": 8,
+        ])
+        draft.apply(label)
+        #expect(draft.nutrients["dietaryEnergyConsumed"] == 240)
+        #expect(draft.nutrients["dietaryProtein"] == 4)
+        #expect(draft.nutrients["dietaryFatTotal"] == 8)
     }
 
     @Test func aEuropeanLabelPer100GramsScaledToItsServing() throws {

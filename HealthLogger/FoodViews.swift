@@ -19,6 +19,8 @@ struct FoodLibraryView: View {
     @State private var scanningLabel = false
     @State private var photographingMeal = false
     @State private var composingMeal = false
+    /// Food entries from the last `Recents.days` days, newest first, which the recents below are made from.
+    @State private var loggedRecently: [LoggedEntry] = []
     @State private var recentFoods: [FoodPortion] = []
     @State private var recentMeals: [RecentMeal] = []
     /// Recent foods and meals logged a moment ago with their quick-log button, to show a checkmark.
@@ -116,6 +118,8 @@ struct FoodLibraryView: View {
         .sheet(isPresented: $photographingMeal) { MealPhotoView() }
         .sheet(isPresented: $composingMeal) { NewMealView() }
         .task(id: health.changeCount) { await loadRecents() }
+        // Editing a saved food here or on another iPhone can give recents of it a serving weight, or take it away.
+        .onChange(of: foods.map(\.draft)) { showRecents() }
         .sensoryFeedback(.success, trigger: justLogged.count) { old, new in new > old }
         .alert("Couldn't Save", isPresented: .constant(error != nil)) {
             Button("OK") { error = nil }
@@ -267,10 +271,15 @@ struct FoodLibraryView: View {
         let since = Calendar.current.date(byAdding: .day, value: -Recents.days, to: .now)!
         // Recents are a shortcut, so if Health can't be read (such as while locked) just keep what's showing.
         guard let entries = try? await health.recentEntries(of: [], since: since, limit: 500) else { return }
+        loggedRecently = entries
+        showRecents()
+    }
+
+    private func showRecents() {
         // Foods logged before they had a serving weight can be weighed when logged again, if they match.
-        let logged = entries.map { entry in
+        let logged = loggedRecently.map { entry in
             var entry = entry
-            entry.food = entry.food?.withServingWeight(from: self.foods)
+            entry.food = entry.food?.withServingWeight(from: foods)
             return entry
         }
         recentFoods = Recents.foods(in: logged, limit: Self.recentFoodLimit)
@@ -319,6 +328,22 @@ enum Recents {
     static func lastMeal(_ meal: Meal, in entries: [LoggedEntry]) -> RecentMeal? {
         meals(in: entries.filter { $0.meal == meal && !Calendar.current.isDateInToday($0.date) },
               limit: 1, minimumFoods: 1).first
+    }
+
+    /// The same, read from Health a day at a time from yesterday back, so the meal has all its foods however much
+    /// else was logged since.
+    static func lastMeal(_ meal: Meal, in health: HealthStore) async throws -> RecentMeal? {
+        let calendar = Calendar.current
+        let since = calendar.date(byAdding: .day, value: -days, to: .now)!
+        var end = calendar.startOfDay(for: .now)
+        while end > since {
+            let start = max(calendar.date(byAdding: .day, value: -1, to: end)!, since)
+            let day = try await health.recentEntries(of: [], since: start, before: end, limit: nil)
+                .filter { $0.date >= start && $0.date < end }
+            if let found = lastMeal(meal, in: day) { return found }
+            end = start
+        }
+        return nil
     }
 
     private struct MealKey: Hashable {
@@ -837,7 +862,8 @@ struct FoodEditor: View {
             } footer: {
                 VStack(alignment: .leading, spacing: 6) {
                     switch draft.source {
-                    case .database: Text("Filled in from Open Food Facts. Check it against the label before saving.")
+                    case .database:
+                        Text("Filled in from [Open Food Facts](https://world.openfoodfacts.org), available under the [Open Database License](https://opendatacommons.org/licenses/odbl/1-0/). Check it against the label before saving.")
                     case .notFound: Text("This barcode isn't in Open Food Facts. Scan its nutrition label or enter the details.")
                     case .label: Text("Filled in from the label. Check each amount against it, and add a name, before saving.")
                     case .manual: EmptyView()

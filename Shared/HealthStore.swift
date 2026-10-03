@@ -502,13 +502,14 @@ final class HealthStore {
         return try await descriptor.result(for: store).first
     }
 
-    /// Entries logged by this app on iPhone or Apple Watch, newest first.
+    /// Entries logged by this app on iPhone or Apple Watch, newest first, starting from `start` and before `end`
+    /// when given. A nil limit reads them all.
     func recentEntries(of metrics: [Metric] = Metric.all, includingFoods: Bool = true, since start: Date? = nil,
-                       limit: Int = 200) async throws -> [LoggedEntry] {
+                       before end: Date? = nil, limit: Int? = 200) async throws -> [LoggedEntry] {
         var ours = HKQuery.predicateForObjects(withMetadataKey: Self.entryMetadataKey)
-        if let start {
+        if start != nil || end != nil {
             ours = NSCompoundPredicate(andPredicateWithSubpredicates: [
-                ours, HKQuery.predicateForSamples(withStart: start, end: nil),
+                ours, HKQuery.predicateForSamples(withStart: start, end: end),
             ])
         }
         var types = Set(metrics.map(\.historyType))
@@ -606,6 +607,11 @@ final class HealthStore {
 
     func delete(_ entry: LoggedEntry) async throws {
         try await delete(entry.sample)
+        // Deleting either side of an unfinished edit leaves one entry, so there's nothing left to finish: removing
+        // the original after its correction was deleted would leave neither.
+        for edit in pendingEdits where edit.original == entry.id || edit.replacement == entry.id {
+            forget(edit)
+        }
     }
 
     /// Deletes a sample, and for a correlation (a food or blood pressure entry) the samples in it.
@@ -675,13 +681,31 @@ final class HealthStore {
         }
     }
 
-    /// Deletes the original of an edit whose correction was saved, looking it up again in case it's gone already.
+    /// Deletes the original of an edit whose correction was saved, looking both up again in case either is gone
+    /// already. If the correction is gone, such as deleted in the Health app, the original is the only entry left,
+    /// so it's kept, the edit is dropped and `EditError.correctionMissing` is thrown.
     func finishEdit(_ edit: PendingEdit) async throws {
+        guard try await finish(edit) else { throw EditError.correctionMissing(edit) }
+    }
+
+    /// Finishes an edit, or drops it and returns false if its correction isn't in Health. An edit whose correction
+    /// turns out to have been saved is noted as such first, so if the delete fails it's still listed in History.
+    private func finish(_ edit: PendingEdit) async throws -> Bool {
+        guard try await sample(of: edit.sampleType, id: edit.replacement) != nil else {
+            forget(edit)
+            return false
+        }
+        if !edit.replacementSaved, pendingEdits.contains(where: { $0.id == edit.id }) {
+            var saved = edit
+            saved.replacementSaved = true
+            record(saved)
+        }
         try injectFault(at: .delete)
         if let original = try await sample(of: edit.sampleType, id: edit.original) {
             try await delete(original)
         }
         forget(edit)
+        return true
     }
 
     /// Stops offering to finish an edit, leaving both entries in Health for the user to sort out.
@@ -691,21 +715,14 @@ final class HealthStore {
 
     /// Finishes edits that an earlier run of the app left part done: deletes the original if the correction was
     /// saved, and otherwise drops the edit, since the original is still the only entry. Edits that can't be checked
-    /// now, such as while the device is locked, are tried again next time.
+    /// or finished now, such as while the device is locked, are tried again next time, and History lists those
+    /// whose correction was found meanwhile.
     func finishPendingEdits() async {
         guard !finishingPendingEdits else { return }
         finishingPendingEdits = true
         defer { finishingPendingEdits = false }
         for edit in pendingEdits where !editsInProgress.contains(edit.id) {
-            do {
-                if try await sample(of: edit.sampleType, id: edit.replacement) == nil {
-                    forget(edit)
-                } else {
-                    try await finishEdit(edit)
-                }
-            } catch {
-                continue
-            }
+            _ = try? await finish(edit)
         }
     }
 
@@ -793,12 +810,16 @@ struct PendingEdit: Codable, Identifiable, Hashable {
 enum EditError: LocalizedError {
     /// The correction was saved, but the original couldn't be deleted, so both are in Health.
     case originalRemains(PendingEdit, Error)
+    /// The correction was deleted before the edit was finished, so the original was kept rather than removed.
+    case correctionMissing(PendingEdit)
 
     var errorDescription: String? {
         switch self {
         case .originalRemains(_, let error):
             "The corrected entry was saved, but the original is still in Health, so both are listed. "
                 + "Try again now, or later from History.\n\n\(error.healthMessage)"
+        case .correctionMissing:
+            "The corrected entry is no longer in Health, so the original was kept."
         }
     }
 }
