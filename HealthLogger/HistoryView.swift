@@ -10,15 +10,12 @@ struct HistoryView: View {
     var body: some View {
         NavigationStack {
             List {
+                UnfinishedEditsSection { self.error = $0 }
                 ForEach(groupedByDay, id: \.day) { group in
                     Section(group.day.formatted(date: .complete, time: .omitted)) {
                         ForEach(group.entries) { entry in
-                            // Foods aren't editable here; they're logged by the serving from My Foods.
-                            if entry.metric != nil {
-                                NavigationLink(value: entry) { row(for: entry) }
-                            } else {
-                                row(for: entry).logAgainActions(entry, in: health) { self.error = $0 }
-                            }
+                            NavigationLink(value: entry) { row(for: entry) }
+                                .logAgainActions(entry, in: health) { self.error = $0 }
                         }
                         .onDelete { offsets in delete(offsets.map { group.entries[$0] }) }
                     }
@@ -33,7 +30,11 @@ struct HistoryView: View {
             .navigationTitle("History")
             // Tied to the value rather than the row, so the list reloading after the edit saves doesn't pop it early.
             .navigationDestination(for: LoggedEntry.self) { entry in
-                if let metric = entry.metric { EntryView(metric: metric, editing: entry) }
+                if let metric = entry.metric {
+                    EntryView(metric: metric, editing: entry)
+                } else if entry.food != nil {
+                    LogFoodView(editing: entry)
+                }
             }
             .toolbar { EditButton() }
             .refreshable { await reload() }

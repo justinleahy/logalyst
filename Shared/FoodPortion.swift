@@ -35,6 +35,60 @@ enum Meal: String, CaseIterable, Identifiable {
     }
 }
 
+/// A unit a food's amount can be weighed in. Only mass: volumes aren't weights without knowing the food's density.
+enum WeightUnit: String, CaseIterable, Identifiable, Codable {
+    case grams = "g"
+    case ounces = "oz"
+
+    static let gramsPerOunce = 28.349523125
+
+    var id: Self { self }
+    var label: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .grams: "Grams"
+        case .ounces: "Ounces"
+        }
+    }
+
+    /// Digits shown and typed: whole grams are precise enough, but an ounce is coarse.
+    var fractionDigits: Int {
+        switch self {
+        case .grams: 1
+        case .ounces: 2
+        }
+    }
+
+    /// How much the stepper changes the amount.
+    var step: Double {
+        switch self {
+        case .grams: 5
+        case .ounces: 0.25
+        }
+    }
+
+    func grams(from value: Double) -> Double {
+        switch self {
+        case .grams: value
+        case .ounces: value * Self.gramsPerOunce
+        }
+    }
+
+    func value(fromGrams grams: Double) -> Double {
+        switch self {
+        case .grams: grams
+        case .ounces: grams / Self.gramsPerOunce
+        }
+    }
+
+    /// "35 g" or "1.25 oz".
+    func format(grams: Double) -> String {
+        let value = value(fromGrams: grams).formatted(.number.precision(.fractionLength(0...fractionDigits)))
+        return "\(value) \(label)"
+    }
+}
+
 /// One food as it goes into Health: its nutrition per serving and how many servings were eaten.
 /// Built from a saved food, or read back from a past food entry so it can be logged again.
 struct FoodPortion: Identifiable, Hashable, Codable {
@@ -46,6 +100,11 @@ struct FoodPortion: Identifiable, Hashable, Codable {
     /// Amount per serving keyed by metric ID, in each metric's first unit option (kcal, g, mg).
     var nutrients: [String: Double]
     var servings = 1.0
+    /// What one serving weighs, in grams, when that's known, so the food can be entered by weight. Nil for foods
+    /// known only by volume or count. Optional so ingredients saved before it existed still decode.
+    var gramsPerServing: Double?
+    /// The unit the amount was weighed in, or nil when it was entered in servings. Only set with `gramsPerServing`.
+    var weightUnit: WeightUnit?
 
     /// Total amount eaten, in the metric's first unit option.
     func amount(of metricID: String) -> Double {
@@ -58,5 +117,114 @@ struct FoodPortion: Identifiable, Hashable, Codable {
     func isSameFood(as other: FoodPortion) -> Bool {
         name.localizedCaseInsensitiveCompare(other.name) == .orderedSame
             && brand.localizedCaseInsensitiveCompare(other.brand) == .orderedSame
+    }
+
+    /// Whether the food can be entered by weight.
+    var canWeigh: Bool {
+        (gramsPerServing ?? 0) > 0
+    }
+
+    /// The weight eaten, in grams, when the serving weight is known.
+    var grams: Double? {
+        canWeigh ? gramsPerServing.map { $0 * servings } : nil
+    }
+
+    /// The unit the amount is entered in, if it's weighed. Ignores a unit left over on a food that can't be weighed.
+    var enteredWeightUnit: WeightUnit? {
+        canWeigh ? weightUnit : nil
+    }
+
+    /// The amount in the unit it's entered in: servings, or the weight in grams or ounces. Setting it works out
+    /// the servings, which is what nutrition is calculated from.
+    var enteredAmount: Double {
+        get {
+            guard let unit = enteredWeightUnit, let grams else { return servings }
+            return unit.value(fromGrams: grams)
+        }
+        set {
+            guard let unit = enteredWeightUnit, let gramsPerServing else {
+                servings = newValue
+                return
+            }
+            servings = unit.grams(from: newValue) / gramsPerServing
+        }
+    }
+
+    /// Switches between entering servings and a weight, keeping the amount eaten the same.
+    mutating func enter(in unit: WeightUnit?) {
+        weightUnit = canWeigh ? unit : nil
+    }
+
+    /// "35 g" for a weighed portion, otherwise "2 × 1 cup", "1 cup" or "2 servings".
+    var amountText: String {
+        if let unit = enteredWeightUnit, let grams {
+            return unit.format(grams: grams)
+        }
+        let count = servings.formatted(.number.precision(.fractionLength(0...2)))
+        if servingSize.isEmpty {
+            return servings == 1 ? "1 serving" : "\(count) servings"
+        }
+        return servings == 1 ? servingSize : "\(count) × \(servingSize)"
+    }
+
+    /// This portion swapped for another food, such as a meal-photo guess corrected to a saved food. A weighed
+    /// amount stays the same weight when the new food can be weighed, and a count of servings (like 3 eggs) carries
+    /// over; a weight can't become servings of something else, so that starts at one serving.
+    func replaced(by food: FoodPortion) -> FoodPortion {
+        var replacement = food
+        replacement.id = UUID()
+        if let unit = enteredWeightUnit, let grams {
+            if replacement.canWeigh, let gramsPerServing = replacement.gramsPerServing {
+                replacement.weightUnit = unit
+                replacement.servings = grams / gramsPerServing
+            } else {
+                replacement.weightUnit = nil
+                replacement.servings = 1
+            }
+        } else {
+            replacement.weightUnit = nil
+            replacement.servings = servings > 0 ? servings : 1
+        }
+        return replacement
+    }
+}
+
+extension FoodPortion {
+    /// Recipes store their ingredients as a list of these, and a list that fails to decode loads as no ingredients,
+    /// so the weight fields (added in 1.1) are read leniently: missing or unreadable just means not weighed.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        brand = try container.decode(String.self, forKey: .brand)
+        servingSize = try container.decode(String.self, forKey: .servingSize)
+        nutrients = try container.decode([String: Double].self, forKey: .nutrients)
+        servings = try container.decode(Double.self, forKey: .servings)
+        gramsPerServing = (try? container.decodeIfPresent(Double.self, forKey: .gramsPerServing)) ?? nil
+        weightUnit = (try? container.decodeIfPresent(WeightUnit.self, forKey: .weightUnit)) ?? nil
+    }
+}
+
+/// Reads a serving's weight from how it's written on a label, such as "1 bar (30 g)".
+nonisolated enum ServingWeight {
+    /// The weight in grams when the text states exactly one in grams or kilograms, as in "1 bar (30 g)", "30g" or
+    /// "3/4 cup (170 g)". Nil for volumes ("250 mL", "8 fl oz"), bare ounces (which could be fluid ounces), several
+    /// different weights, or none, so a weight is never guessed.
+    static func grams(in text: String) -> Double? {
+        var text = text.lowercased()
+        // Thousands separators, as in "1,000 g", and decimal commas, as in "30,5 g".
+        text = text.replacing(#/(\d),(\d{3})(?!\d)/#) { "\($0.output.1)\($0.output.2)" }
+        text = text.replacing(#/(\d),(\d{1,2})(?!\d)/#) { "\($0.output.1).\($0.output.2)" }
+        let weights = text.matches(of: #/(\d+(?:\.\d+)?)\s*(kg|kilograms?|g|grams?|gr)\b/#).compactMap { match in
+            Double(match.output.1).map { match.output.2.hasPrefix("k") ? $0 * 1000 : $0 }
+        }
+        guard let first = weights.first, first > 0, weights.allSatisfy({ $0 == first }) else { return nil }
+        return first
+    }
+
+    /// Whether the serving is just a weight, like "100 g", so it's more natural to enter by weight than by serving.
+    static func isWeightOnly(_ text: String) -> Bool {
+        text.trimmingCharacters(in: .whitespaces).lowercased()
+            .wholeMatch(of: #/\d+(?:[.,]\d+)?\s*(kg|g|grams?)/#) != nil
     }
 }

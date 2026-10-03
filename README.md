@@ -2,6 +2,12 @@
 
 An iPhone + Apple Watch app for manually logging health data that Apple Watch doesn't capture, written straight into Apple Health (HealthKit).
 
+See the [roadmap](ROADMAP.md) for the 1.1 release plan and later candidates.
+
+The first time it opens on an iPhone, Logalyst explains what it does and why it asks for Health access (asking
+only then), and offers to star favorites, review goals and set up reminders; every step can be skipped.
+iPhones that have used Logalyst before go straight to the app.
+
 ## What you can log
 
 | Category | Metrics |
@@ -19,7 +25,10 @@ An iPhone + Apple Watch app for manually logging health data that Apple Watch do
 - **Presets:** tap a preset amount on an entry screen to fill it in. Type an amount and tap *Save as Preset* to add
   your own (up to 6 per unit, for any number metric), touch and hold one to remove it, or restore the defaults.
   Presets are kept per unit, so a 330 mL preset doesn't show when you enter fl oz. The Water widget's buttons use
-  your first water presets, and they're edited on the iPhone and sent to the Watch.
+  your first water presets, and they're edited on the iPhone and sent to the Watch, which shows them as buttons
+  under the Digital Crown amount: tap one to fill it in, then turn the Crown or tap Save. The Watch shows the
+  presets for the unit it enters in (your Health app preference, or your region), which may differ from a unit you
+  picked in Options on the iPhone, since that choice isn't sent to the Watch.
 - **Nutrition** tab tracks today's water against a daily goal (with a progress ring and a
   list of today's water to tap and fix or swipe away), shows calories, macros, sugar, fiber, cholesterol, sodium and caffeine against daily
   targets or limits, and charts any intake metric over the last 7 days. Totals include data other apps
@@ -45,8 +54,13 @@ An iPhone + Apple Watch app for manually logging health data that Apple Watch do
   for men, 2.6 L otherwise; about 80% of total water, since food supplies the rest) plus 250 mL to 1 L for
   activity, and doesn't change with the weight goal. It only suggests goals for adults, and nothing changes until
   you tap *Use These Goals*. The caffeine, saturated fat, cholesterol and sodium limits aren't touched.
-- **Foods:** save foods with their nutrition per serving (My Foods), then log them by the serving. Each one is
-  saved to Health as a single food entry, so Health shows it by name and History lists it once. Each food is
+- **Foods:** save foods with their nutrition per serving (My Foods), then log them by the serving or, for a food
+  with a serving weight, by weight in grams or ounces: 35 g of a food whose serving is 100 g logs 0.35 servings
+  of each nutrient, and reads as "35 g". Add the serving weight in the food editor; barcode lookups and label
+  scans fill it in when the serving is given in grams, and for a food saved before 1.1 whose serving size states
+  a weight, like "1 bar (30 g)", the editor offers to use it. A serving given only as a volume (mL or fl oz) has
+  no weight, since that would need the food's density. Each one is saved to Health as a single food entry, so
+  Health shows it by name and History lists it once. Each food is
   logged at a meal (breakfast, lunch, dinner or snack), which follows the time until you pick one, and the
   Nutrition tab lists today's food by meal. Scan a
   barcode to jump straight to a saved food, or to fill in a new one from
@@ -61,29 +75,43 @@ An iPhone + Apple Watch app for manually logging health data that Apple Watch do
   the amounts before saving, since print can be misread.
 - **Logging food again:** *Add Food* starts with your recent meals (two or more foods at the same meal) and the
   foods you've logged in the last 30 days. Tap ⊕ to log one again now, as much as last time, or tap the row to
-  change the servings, meal or time first (a meal lets you leave foods out). Swipe right on a food in History
-  or the Nutrition tab (or touch and hold it) to log it again, and swipe right on a saved food to make it a
-  favorite, which keeps it at the top of My Foods. Recents come from Health, which also stores each entry's
-  servings, serving size, brand and meal, so they work even after the saved food is deleted.
+  change the servings or weight, meal or time first (a meal lets you add, replace or leave out foods). Swipe
+  right on a food in History or the Nutrition tab (or touch and hold it) to log it again, and swipe right on a
+  saved food to make it a favorite, which keeps it at the top of My Foods. Recents come from Health, which also
+  stores each entry's servings, serving size, serving weight, brand and meal, so they work even after the saved
+  food is deleted. A food logged before it had a serving weight picks one up when logged again only if its saved
+  food has the same name, brand, serving size and nutrition.
+- **Meals:** *New Meal* (in the Nutrition tab, or under ＋ in Add Food) starts a meal from several saved foods
+  without making a recipe first. On any meal screen (a new meal, a recent meal or a photo of a meal) you can add
+  a food you missed, swipe left on one to replace it with one of your foods (a weight stays the same weight, and a
+  count like 3 eggs stays 3), change amounts by the serving or weight, leave foods out, and save the meal as a
+  recipe. The totals shown are what's logged.
+- **Editing logged food:** tap a food in History or the Nutrition tab to change its servings (or weight, if it was
+  logged with one), meal, or date and time. Its nutrition per serving comes from the entry itself, so editing or
+  deleting the saved food doesn't change it, and editing it doesn't change the saved food or recipe.
 - **Photo of Meal** (iOS 27 or later with Apple Intelligence on): take or choose a photo of a meal, and Apple
   Intelligence's on-device model lists each food and drink with the amount shown and its estimated calories,
   macros, sugar, fiber and caffeine. Foods named like one of your saved foods or recipes use your nutrition
-  instead. Check and adjust them on the meal screen (servings, leaving foods out, meal and time) before logging,
-  or save them as a recipe. A photo from your library is logged at the time it was taken. Nothing leaves the
+  instead (and a saved food's serving weight). Check and correct them on the meal screen (add or replace foods,
+  change amounts, leave foods out, meal and time) before logging, or save them as a recipe. A photo from your library is logged at the time it was taken. Nothing leaves the
   iPhone, and the button only appears where the model is available.
-- **Recipes:** in *Add Food*, tap ＋ and *New Recipe* to combine servings of saved foods into a dish, and say how
-  many servings it makes. It's logged by the serving like any food (e.g. "1/4 recipe"), and saved to Health as
-  one food entry with the per-serving nutrition, so it shows in Recent and can be logged again. You can also
-  save a recent meal as a recipe from its screen. Ingredients are copies, so editing or deleting a saved food
-  later doesn't change recipes made with it.
+- **Recipes:** in *Add Food*, tap ＋ and *New Recipe* to combine servings (or weights) of saved foods into a dish,
+  and say how many servings it makes. It's logged by the serving like any food (e.g. "1/4 recipe"); its own
+  weight isn't worked out from its ingredients'. It's saved to Health as one food entry with the per-serving
+  nutrition, so it shows in Recent and can be logged again. You can also save a meal as a recipe from its screen.
+  Ingredients are copies, so editing or deleting a saved food later doesn't change recipes made with it. An
+  iPhone still on 1.0 that edits a recipe keeps its nutrition but drops its ingredients' weights.
 - **iCloud:** saved foods, recipes and settings (units, goals, favorites, presets, log reminders and Suggest
   Goals answers) sync to the app's private database in the user's iCloud account, with every field end-to-end
   encrypted (CloudKit encrypted values), so they carry over to a new or second iPhone. The most recent edit to
   a setting wins. Without iCloud they stay on the device. Health data is synced by the Health app itself, and the
   Watch still gets its settings from the iPhone.
-- **History** tab lists everything logged from either device; swipe to delete, or tap an entry to fix it. Health
-  can't change a saved entry, so editing saves the corrected one and then deletes the original. Foods can't be
-  edited, only deleted or logged again.
+- **History** tab lists everything logged from either device; swipe to delete, or tap an entry (food included) to
+  fix it. Health can't change a saved entry, so editing saves the corrected one and then deletes the original.
+  The edit is noted on the iPhone first, so it can be finished later without saving the correction twice: if the
+  original can't be deleted, you can try again right away, or later from History (and the Nutrition tab), which
+  lists the unfinished edit with *Remove Original* and *Keep Both*; if the app closes partway, the edit is
+  finished the next time it opens.
 - **Widgets** (iPhone Home Screen, Lock Screen and Control Center):
   - *Water*: today's water against your goal, with buttons that log a glass without opening the app.
   - *Nutrition*: calories and nutrients against your daily goals. On the Lock Screen it shows a calorie gauge,
@@ -100,8 +128,14 @@ An iPhone + Apple Watch app for manually logging health data that Apple Watch do
   - *Log Metric*: "Log my weight in Logalyst" (or blood glucose, caffeine, or any other metric logged as a
     number that the device offers) asks for the value in your unit, then saves it. In Shortcuts you can set the
     value and unit, which makes automations like "log 95 mg of caffeine when I arrive at the coffee shop" possible.
+  - *Log Food* (iPhone): "Log oatmeal in Logalyst" logs a serving of a saved food or recipe; Siri asks which one
+    when a name fits several, like "yogurt". In Shortcuts you can set the servings and the meal (otherwise the usual
+    one for the time). Foods are found by name, so a shortcut works on your other iPhones too.
+  - *Log Last Meal Again* (iPhone): "Log my last breakfast again in Logalyst" logs the foods from your most recent
+    breakfast (or lunch, dinner or snack) before today, in the last 30 days, at the same meal, now.
   - Every phrase has to include the app's name. Siri says what was saved and, for intake, today's total. Like
-    the widgets, these ask you to unlock first.
+    the widgets, these ask you to unlock first. Siri learns your food names when you open the app and whenever
+    foods or recipes change, including from iCloud.
 - The app handles `healthlogger://log/<metric ID>` and `healthlogger://nutrition` links, which the widgets and
   controls use.
 - **Complications** on Apple Watch: the Metric widget, showing a metric's latest reading or today's total.
@@ -132,6 +166,28 @@ An iPhone + Apple Watch app for manually logging health data that Apple Watch do
    testing. For TestFlight and the App Store, create consumable in-app purchases in App Store Connect with the
    product IDs in `TipJar.productIDs` (`HealthLogger/TipJar.swift`).
 
+## Testing
+
+`HealthLoggerTests` (unit and HealthKit tests) and `HealthLoggerUITests` (UI tests and accessibility audits) run
+from the `HealthLogger` scheme in a simulator: Product › Test, or
+
+```
+xcodebuild test -project HealthLogger.xcodeproj -scheme HealthLogger \
+  -destination 'platform=iOS Simulator,name=iPhone 18 Pro'
+```
+
+They write to that simulator's Health store, so open the app there once and allow Health access first. Each
+test logs foods under its own names. Debug builds take these launch arguments for testing:
+
+- `-InjectEditFault save`, `delete` or `stop` makes the next edit fail at that step (`stop` quits the app right
+  after the correction is saved), to check the recovery.
+- `-SkipHealthAuthorization YES` doesn't ask for Health access, for UI tests on a simulator whose permission
+  sheet they can't reach (the iOS 26 one).
+- `-SeedScreenshotData YES` fills a fresh simulator for App Store screenshots, as before.
+
+`testComposeAMealWherePhotoOfMealIsUnavailable` is for an iOS 18–26 simulator, where Photo of Meal is hidden;
+it's skipped on iOS 27.
+
 ## Adding a metric
 
 Everything is driven by the catalog in `Shared/Metric.swift`. Add a `Metric` entry with its HealthKit
@@ -144,6 +200,8 @@ HealthLogger/        iPhone app (Log, Entry, Nutrition, History, Options screens
 HealthLoggerWatch/   Watch app (Favorites, Digital Crown entry)
 HealthLoggerWidgets/ iPhone widget extension (Water, Nutrition, Quick Log)
 HealthLoggerWatchWidgets/  Watch widget extension (complications)
+HealthLoggerTests/   Unit and HealthKit tests (weights, imports, recipes, editing and its recovery)
+HealthLoggerUITests/ UI tests of the food flows, Watch presets setup, and accessibility audits
 AppShortcuts/        Siri phrases, compiled into the iPhone and Watch apps
 Widgets/             Metric widget, Log Water and Log Metric controls, and widget helpers, compiled into both
                      widget extensions

@@ -1,6 +1,6 @@
 # Logalyst Privacy Policy
 
-_Effective September 23, 2026_
+_Effective October 3, 2026_
 
 Logalyst is an iPhone and Apple Watch app for logging health data into Apple Health. It was built to keep
 your data on your devices. This policy explains what the app accesses, where that data goes, and how to remove it.
@@ -21,7 +21,8 @@ your data on your devices. This policy explains what the app accesses, where tha
 With your permission, Logalyst uses Apple Health (HealthKit) to:
 
 - **Save** the measurements, intake, symptoms and events you enter, such as blood pressure, blood glucose,
-  weight, water, nutrition, symptoms and sexual activity.
+  weight, water, nutrition, symptoms and sexual activity. Each food entry also records the food's name, brand,
+  serving size and weight, how much you had and the meal, so it can be logged again or corrected.
 - **Read** that same kind of data to show your history, prefill your last reading, show today's totals and
   charts, and power the widgets and Watch complications. Nutrition totals include data that other apps have saved
   to Health.
@@ -45,8 +46,11 @@ Logalyst keeps a few things in its own storage on your device:
 
 - **Settings:** your preferred units, daily goals and limits, favorite metrics, preset amounts, log reminder
   schedules, and your Suggest Goals answers.
-- **My Foods and recipes:** the foods you save, with their nutrition per serving and barcode, and the recipes
-  you make from them.
+- **My Foods and recipes:** the foods you save, with their nutrition per serving, serving weight and barcode, and
+  the recipes you make from them.
+- **Edits in progress:** when you correct an entry, which entry is being replaced and by which, until the
+  correction is finished, so an edit cut short (for example by the app closing) can be completed. This stays on
+  your iPhone and isn't synced.
 
 If you're signed in to iCloud, the iPhone app also keeps a copy of these in the app's private database in your
 iCloud account, so they follow you to a new iPhone or your other iPhones. Every field is end-to-end encrypted with

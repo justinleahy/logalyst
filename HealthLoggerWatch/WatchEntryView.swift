@@ -64,7 +64,7 @@ struct WatchEntryView: View {
     }
 }
 
-/// Turn the Digital Crown to adjust the value, then tap Save.
+/// Turn the Digital Crown to adjust the value, or tap a preset to fill it in, then tap Save.
 private struct QuantityEntry: View {
     let metric: Metric
     let option: UnitOption
@@ -74,18 +74,40 @@ private struct QuantityEntry: View {
     @State private var value: Double = 0
 
     var body: some View {
-        VStack(spacing: 8) {
-            Text(value.formatted(.number.precision(.fractionLength(option.fractionDigits))))
-                .font(.system(size: 40, weight: .semibold, design: .rounded).monospacedDigit())
-                .focusable()
-                .digitalCrownRotation($value, from: option.range.lowerBound, through: option.range.upperBound,
-                                      by: option.step, sensitivity: .low, isContinuous: false,
-                                      isHapticFeedbackEnabled: true)
-            Text(option.label).foregroundStyle(.secondary)
-            Button("Save") {
-                onSave { try await health.saveQuantity(metric, value: value, option: option, date: .now) }
+        // The presets for the unit the Watch enters in, edited on the iPhone (or the built-in ones), smallest first.
+        let presets = health.presets(for: metric, in: option)
+        // Scrolls on the smallest watches when there are more than a row of presets.
+        ScrollView {
+            VStack(spacing: 8) {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(value.formatted(.number.precision(.fractionLength(option.fractionDigits))))
+                        .font(.system(size: 40, weight: .semibold, design: .rounded).monospacedDigit())
+                        .focusable()
+                        .digitalCrownRotation($value, from: option.range.lowerBound, through: option.range.upperBound,
+                                              by: option.step, sensitivity: .low, isContinuous: false,
+                                              isHapticFeedbackEnabled: true)
+                        .accessibilityValue(option.format(value))
+                    Text(option.label(for: value)).foregroundStyle(.secondary)
+                }
+                if !presets.isEmpty {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 3), spacing: 4) {
+                        ForEach(presets, id: \.self) { amount in
+                            // Fills in the amount without saving, so it can still be turned or checked first.
+                            Button(option.formatNumber(amount)) { value = amount }
+                                .buttonStyle(.bordered)
+                                .buttonBorderShape(.capsule)
+                                .controlSize(.mini)
+                                .tint(value == amount ? .accentColor : nil)
+                                .accessibilityLabel(option.format(amount))
+                                .accessibilityAddTraits(value == amount ? .isSelected : [])
+                        }
+                    }
+                }
+                Button("Save") {
+                    onSave { try await health.saveQuantity(metric, value: value, option: option, date: .now) }
+                }
+                .buttonStyle(.borderedProminent)
             }
-            .buttonStyle(.borderedProminent)
         }
         .task {
             value = option.defaultValue

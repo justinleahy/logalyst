@@ -36,12 +36,12 @@ struct DailyTotal: Identifiable {
 
 extension Error {
     /// True when Health refused because the device is locked. Health data is encrypted until the next unlock.
-    var isHealthDataLocked: Bool {
+    nonisolated var isHealthDataLocked: Bool {
         (self as? HKError)?.code == .errorDatabaseInaccessible
     }
 
     /// Text for an alert, replacing HealthKit's "Protected health data is inaccessible" with what to do about it.
-    var healthMessage: String {
+    nonisolated var healthMessage: String {
         guard isHealthDataLocked else { return localizedDescription }
         #if os(watchOS)
         return "Unlock your Apple Watch to use Health data, then try again."
@@ -82,6 +82,10 @@ final class HealthStore {
     private static let servingsMetadataKey = "HealthLoggerServings"
     private static let servingSizeMetadataKey = "HealthLoggerServingSize"
     private static let brandMetadataKey = "HealthLoggerBrand"
+    /// Grams per serving, saved from 1.1 on when the food's serving weight is known.
+    private static let gramsPerServingMetadataKey = "HealthLoggerGramsPerServing"
+    /// "g" or "oz" when the amount was entered by weight.
+    private static let weightUnitMetadataKey = "HealthLoggerWeightUnit"
 
     let isAvailable = HKHealthStore.isHealthDataAvailable()
     private(set) var preferredUnits: [HKQuantityType: HKUnit] = [:]
@@ -102,9 +106,20 @@ final class HealthStore {
 
     func requestAuthorization() async throws {
         guard isAvailable else { return }
+        #if DEBUG
+        // For UI tests on simulators whose Health permission sheet they can't reach, which then test without Health.
+        if UserDefaults.standard.bool(forKey: "SkipHealthAuthorization") { return }
+        #endif
         // Read access to the same types lets us show history and prefill the last value.
         try await store.requestAuthorization(toShare: writeTypes, read: writeTypes)
         await loadPreferredUnits()
+    }
+
+    /// Whether Health has asked for access on this device before, whatever the answer: the types this app writes
+    /// are only undetermined until then.
+    var hasAskedForAccess: Bool {
+        guard isAvailable else { return true }
+        return writeTypes.contains { store.authorizationStatus(for: $0) != .notDetermined }
     }
 
     /// Asks to read height, weight, age, sex and resting energy, only when the user opens Suggest Goals.
@@ -162,8 +177,12 @@ final class HealthStore {
     private var favoritesUpdated = AppGroup.defaults.object(forKey: favoritesUpdatedKey) as? Date
     private var sync: DeviceSync?
 
-    /// Widgets pass false: they only read favorites and goals, and syncing is the app's job.
-    init(syncs: Bool = true) {
+    /// Widgets pass false: they only read favorites and goals, and syncing is the app's job. Unfinished edits are
+    /// kept in `editDefaults`.
+    init(syncs: Bool = true, editDefaults: UserDefaults = .standard) {
+        self.editDefaults = editDefaults
+        pendingEdits = (editDefaults.data(forKey: Self.pendingEditsKey))
+            .flatMap { try? JSONDecoder().decode([PendingEdit].self, from: $0) } ?? []
         guard syncs else { return }
         sync = DeviceSync { [weak self] remote in self?.reconcile(with: remote) }
         sync?.activate()
@@ -306,8 +325,10 @@ final class HealthStore {
 
     // MARK: Saving
 
+    // Each save can replace an entry being edited: see Editing.
+
     func saveQuantity(_ metric: Metric, value: Double, option: UnitOption, date: Date,
-                      mealTime: BloodGlucoseMealTime = .unspecified) async throws {
+                      mealTime: BloodGlucoseMealTime = .unspecified, replacing original: LoggedEntry? = nil) async throws {
         guard case .quantity(let id, _) = metric.kind else { return }
         var metadata = baseMetadata
         if let mealTime = mealTime.healthKitValue {
@@ -315,10 +336,11 @@ final class HealthStore {
         }
         let sample = HKQuantitySample(type: HKQuantityType(id), quantity: option.quantity(fromDisplay: value),
                                       start: date, end: date, metadata: metadata)
-        try await save([sample])
+        try await save([sample], replacing: original)
     }
 
-    func saveBloodPressure(systolic: Double, diastolic: Double, date: Date) async throws {
+    func saveBloodPressure(systolic: Double, diastolic: Double, date: Date,
+                           replacing original: LoggedEntry? = nil) async throws {
         let metadata = baseMetadata
         let systolicSample = HKQuantitySample(
             type: HKQuantityType(.bloodPressureSystolic),
@@ -330,32 +352,34 @@ final class HealthStore {
             start: date, end: date, metadata: metadata)
         let correlation = HKCorrelation(type: HKCorrelationType(.bloodPressure), start: date, end: date,
                                         objects: [systolicSample, diastolicSample], metadata: metadata)
-        try await save([correlation])
+        try await save([correlation], replacing: original)
     }
 
-    func saveSymptom(_ metric: Metric, severity: Severity, start: Date, end: Date) async throws {
+    func saveSymptom(_ metric: Metric, severity: Severity, start: Date, end: Date,
+                     replacing original: LoggedEntry? = nil) async throws {
         guard case .symptom(let id) = metric.kind else { return }
         let sample = HKCategorySample(type: HKCategoryType(id), value: severity.healthKitValue.rawValue,
                                       start: start, end: max(start, end), metadata: baseMetadata)
-        try await save([sample])
+        try await save([sample], replacing: original)
     }
 
     /// Saves an event that ended at `end` and lasted `duration` seconds.
-    func saveTimedEvent(_ metric: Metric, duration: TimeInterval, end: Date) async throws {
+    func saveTimedEvent(_ metric: Metric, duration: TimeInterval, end: Date,
+                        replacing original: LoggedEntry? = nil) async throws {
         guard case .timedEvent(let id) = metric.kind else { return }
         let sample = HKCategorySample(type: HKCategoryType(id), value: HKCategoryValue.notApplicable.rawValue,
                                       start: end.addingTimeInterval(-duration), end: end, metadata: baseMetadata)
-        try await save([sample])
+        try await save([sample], replacing: original)
     }
 
-    func saveSexualActivity(protection: Protection, date: Date) async throws {
+    func saveSexualActivity(protection: Protection, date: Date, replacing original: LoggedEntry? = nil) async throws {
         var metadata = baseMetadata
         if let used = protection.healthKitValue {
             metadata[HKMetadataKeySexualActivityProtectionUsed] = used
         }
         let sample = HKCategorySample(type: HKCategoryType(.sexualActivity), value: HKCategoryValue.notApplicable.rawValue,
                                       start: date, end: date, metadata: metadata)
-        try await save([sample])
+        try await save([sample], replacing: original)
     }
 
     private var baseMetadata: [String: Any] {
@@ -372,12 +396,20 @@ final class HealthStore {
         didChange()
     }
 
+    private func save(_ objects: [HKObject], replacing original: LoggedEntry?) async throws {
+        if let original {
+            try await replace(original, with: objects)
+        } else {
+            try await save(objects)
+        }
+    }
+
     /// Saves each food as one Health food entry, so Health shows it by name alongside its nutrients.
-    /// Foods with nothing to log are skipped.
-    func saveFoods(_ foods: [FoodPortion], meal: Meal, date: Date) async throws {
+    /// Foods with nothing to log are skipped. When replacing a logged food, pass the one food that corrects it.
+    func saveFoods(_ foods: [FoodPortion], meal: Meal, date: Date, replacing original: LoggedEntry? = nil) async throws {
         let entries = foods.compactMap { foodEntry(for: $0, meal: meal, date: date) }
         guard !entries.isEmpty else { return }
-        try await save(entries)
+        try await save(entries, replacing: original)
     }
 
     private func foodEntry(for food: FoodPortion, meal: Meal, date: Date) -> HKCorrelation? {
@@ -397,6 +429,10 @@ final class HealthStore {
         metadata[Self.servingsMetadataKey] = food.servings
         if !food.servingSize.isEmpty { metadata[Self.servingSizeMetadataKey] = food.servingSize }
         if !food.brand.isEmpty { metadata[Self.brandMetadataKey] = food.brand }
+        if food.canWeigh, let grams = food.gramsPerServing {
+            metadata[Self.gramsPerServingMetadataKey] = grams
+            if let unit = food.enteredWeightUnit { metadata[Self.weightUnitMetadataKey] = unit.rawValue }
+        }
         return HKCorrelation(type: HKCorrelationType(.food), start: date, end: date,
                              objects: Set(samples), metadata: metadata)
     }
@@ -540,10 +576,16 @@ final class HealthStore {
                   case .quantity(_, let options) = metric.kind, let unit = options.first else { continue }
             totals[metric.id, default: 0] += unit.displayValue(from: sample.quantity)
         }
+        // Entries saved before 1.1, or of foods with no known serving weight, can only be entered by the serving.
+        let gramsPerServing = ((metadata[Self.gramsPerServingMetadataKey] as? NSNumber)?.doubleValue)
+            .flatMap { $0 > 0 ? $0 : nil }
         let portion = FoodPortion(
             name: name, brand: metadata[Self.brandMetadataKey] as? String ?? "",
             servingSize: metadata[Self.servingSizeMetadataKey] as? String ?? "",
-            nutrients: servings > 0 ? totals.mapValues { $0 / servings } : totals, servings: servings > 0 ? servings : 1)
+            nutrients: servings > 0 ? totals.mapValues { $0 / servings } : totals, servings: servings > 0 ? servings : 1,
+            gramsPerServing: gramsPerServing,
+            weightUnit: gramsPerServing == nil ? nil
+                : (metadata[Self.weightUnitMetadataKey] as? String).flatMap(WeightUnit.init(rawValue:)))
         let meal = (metadata[Self.mealMetadataKey] as? String).flatMap(Meal.init(rawValue:)) ?? Meal(at: food.startDate)
         let text = totals["dietaryEnergyConsumed"].map { "\($0.formatted(.number.precision(.fractionLength(0)))) kcal" }
             ?? "Logged"
@@ -563,11 +605,200 @@ final class HealthStore {
     // MARK: Deleting
 
     func delete(_ entry: LoggedEntry) async throws {
-        var objects: [HKObject] = [entry.sample]
-        if let correlation = entry.sample as? HKCorrelation {
+        try await delete(entry.sample)
+    }
+
+    /// Deletes a sample, and for a correlation (a food or blood pressure entry) the samples in it.
+    private func delete(_ sample: HKSample) async throws {
+        var objects: [HKObject] = [sample]
+        if let correlation = sample as? HKCorrelation {
             objects += Array(correlation.objects)
         }
         try await store.delete(objects)
         didChange()
+    }
+
+    /// The entry with this ID, or nil if it isn't in Health (any more).
+    func sample(of type: HKSampleType, id: UUID) async throws -> HKSample? {
+        let descriptor = HKSampleQueryDescriptor(
+            predicates: [.sample(type: type, predicate: HKQuery.predicateForObject(with: id))],
+            sortDescriptors: [], limit: 1)
+        return try await descriptor.result(for: store).first
+    }
+
+    // MARK: Editing
+
+    private static let pendingEditsKey = "pendingEntryEdits"
+    /// Where unfinished edits are kept. On this device only: Health syncs the entries themselves.
+    private let editDefaults: UserDefaults
+    /// Edits that were saved but not finished, oldest first. See `replace(_:with:)`.
+    private(set) var pendingEdits: [PendingEdit] = []
+    /// Edits this run of the app is in the middle of, which `finishPendingEdits` leaves alone.
+    private var editsInProgress: Set<UUID> = []
+    /// Whether `finishPendingEdits` is running, since launch, unlocking and coming back can all start it at once.
+    private var finishingPendingEdits = false
+
+    /// Edits whose correction is in Health while the original still is too, so both are listed.
+    var unfinishedEdits: [PendingEdit] {
+        pendingEdits.filter { $0.replacementSaved && !editsInProgress.contains($0.id) }
+    }
+
+    /// Health can't change an entry, so an edit saves the corrected one and then deletes the original. The edit is
+    /// recorded first, so if it's cut short (the delete fails, or the app closes) it can be finished later without
+    /// saving the correction again. If the save fails, nothing has changed and its error is thrown. If the original
+    /// can't be deleted, both stay in Health and `EditError.originalRemains` is thrown; `finishEdit` retries.
+    private func replace(_ original: LoggedEntry, with objects: [HKObject]) async throws {
+        // Health keeps the ID an object is created with, so the correction can be found again before it's saved.
+        guard let replacement = objects.first else { return }
+        var edit = PendingEdit(original: original.id, metricID: original.metric?.id, replacement: replacement.uuid,
+                               title: original.title, started: .now)
+        editsInProgress.insert(edit.id)
+        defer { editsInProgress.remove(edit.id) }
+        record(edit)
+        do {
+            try injectFault(at: .save)
+            try await store.save(objects)
+        } catch {
+            forget(edit)
+            throw error
+        }
+        try injectFault(at: .stop)
+        edit.replacementSaved = true
+        record(edit)
+        didChange()
+        do {
+            try injectFault(at: .delete)
+            try await delete(original.sample)
+            forget(edit)
+        } catch {
+            throw EditError.originalRemains(edit, error)
+        }
+    }
+
+    /// Deletes the original of an edit whose correction was saved, looking it up again in case it's gone already.
+    func finishEdit(_ edit: PendingEdit) async throws {
+        try injectFault(at: .delete)
+        if let original = try await sample(of: edit.sampleType, id: edit.original) {
+            try await delete(original)
+        }
+        forget(edit)
+    }
+
+    /// Stops offering to finish an edit, leaving both entries in Health for the user to sort out.
+    func keepBoth(_ edit: PendingEdit) {
+        forget(edit)
+    }
+
+    /// Finishes edits that an earlier run of the app left part done: deletes the original if the correction was
+    /// saved, and otherwise drops the edit, since the original is still the only entry. Edits that can't be checked
+    /// now, such as while the device is locked, are tried again next time.
+    func finishPendingEdits() async {
+        guard !finishingPendingEdits else { return }
+        finishingPendingEdits = true
+        defer { finishingPendingEdits = false }
+        for edit in pendingEdits where !editsInProgress.contains(edit.id) {
+            do {
+                if try await sample(of: edit.sampleType, id: edit.replacement) == nil {
+                    forget(edit)
+                } else {
+                    try await finishEdit(edit)
+                }
+            } catch {
+                continue
+            }
+        }
+    }
+
+    private func record(_ edit: PendingEdit) {
+        if let index = pendingEdits.firstIndex(where: { $0.id == edit.id }) {
+            pendingEdits[index] = edit
+        } else {
+            pendingEdits.append(edit)
+        }
+        savePendingEdits()
+    }
+
+    private func forget(_ edit: PendingEdit) {
+        pendingEdits.removeAll { $0.id == edit.id }
+        savePendingEdits()
+    }
+
+    private func savePendingEdits() {
+        if pendingEdits.isEmpty {
+            editDefaults.removeObject(forKey: Self.pendingEditsKey)
+        } else {
+            editDefaults.set(try? JSONEncoder().encode(pendingEdits), forKey: Self.pendingEditsKey)
+        }
+    }
+
+    // MARK: Testing edits
+
+    /// A step at which an edit can be made to fail, to check that it recovers.
+    enum EditFault: String {
+        /// Saving the correction fails.
+        case save
+        /// The app stops right after the correction is saved, before noting that it was, as if it had been closed.
+        case stop
+        /// Deleting the original fails.
+        case delete
+    }
+
+    #if DEBUG
+    /// Fails the next edit at this step, once. Set by tests, or at launch with `-InjectEditFault save`, `stop` or
+    /// `delete`.
+    var editFault = UserDefaults.standard.string(forKey: "InjectEditFault").flatMap(EditFault.init(rawValue:))
+    /// What `stop` does: quits the app, unless a test replaces it.
+    var stopForFault: () throws -> Void = { exit(0) }
+    #endif
+
+    private func injectFault(at step: EditFault) throws {
+        #if DEBUG
+        guard editFault == step else { return }
+        editFault = nil
+        if step == .stop { try stopForFault() }
+        throw InjectedFault(step: step)
+        #endif
+    }
+}
+
+#if DEBUG
+struct InjectedFault: LocalizedError {
+    let step: HealthStore.EditFault
+
+    var errorDescription: String? { "Injected \(step.rawValue) failure for testing." }
+}
+#endif
+
+/// An edit that was started: the entry it replaces and the correction that replaces it. See `HealthStore.replace`.
+struct PendingEdit: Codable, Identifiable, Hashable {
+    /// The entry being corrected.
+    let original: UUID
+    /// The metric it logs, or nil for a food, so it can be looked up again.
+    let metricID: String?
+    /// The corrected entry.
+    let replacement: UUID
+    /// What was edited, like "Oatmeal" or "Weight", to say which edit didn't finish.
+    let title: String
+    let started: Date
+    /// Whether the correction was saved. An edit cut short during the save is checked in Health instead.
+    var replacementSaved = false
+
+    var id: UUID { replacement }
+
+    var sampleType: HKSampleType {
+        metricID.flatMap(Metric.metric(id:))?.historyType ?? HKCorrelationType(.food)
+    }
+}
+
+enum EditError: LocalizedError {
+    /// The correction was saved, but the original couldn't be deleted, so both are in Health.
+    case originalRemains(PendingEdit, Error)
+
+    var errorDescription: String? {
+        switch self {
+        case .originalRemains(_, let error):
+            "The corrected entry was saved, but the original is still in Health, so both are listed. "
+                + "Try again now, or later from History.\n\n\(error.healthMessage)"
+        }
     }
 }

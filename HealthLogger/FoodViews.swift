@@ -18,6 +18,7 @@ struct FoodLibraryView: View {
     @State private var scanning = false
     @State private var scanningLabel = false
     @State private var photographingMeal = false
+    @State private var composingMeal = false
     @State private var recentFoods: [FoodPortion] = []
     @State private var recentMeals: [RecentMeal] = []
     /// Recent foods and meals logged a moment ago with their quick-log button, to show a checkmark.
@@ -26,7 +27,6 @@ struct FoodLibraryView: View {
 
     private static let recentFoodLimit = 8
     private static let recentMealLimit = 3
-    private static let recentDays = 30
 
     private enum EditorTarget: Identifiable {
         case new
@@ -94,6 +94,7 @@ struct FoodLibraryView: View {
                 Button("New Food", systemImage: "square.and.pencil") { editor = .new }
                 Button("Scan Nutrition Label", systemImage: "text.viewfinder") { scanningLabel = true }
                 Button("New Recipe", systemImage: "book.closed") { editor = .newRecipe }
+                Button("New Meal", systemImage: "fork.knife.circle") { composingMeal = true }
                 if MealPhoto.isAvailable {
                     Button("Photo of Meal", systemImage: "camera") { photographingMeal = true }
                 }
@@ -113,6 +114,7 @@ struct FoodLibraryView: View {
         .sheet(isPresented: $scanning) { ScanFoodView() }
         .sheet(isPresented: $scanningLabel) { ScanLabelView() }
         .sheet(isPresented: $photographingMeal) { MealPhotoView() }
+        .sheet(isPresented: $composingMeal) { NewMealView() }
         .task(id: health.changeCount) { await loadRecents() }
         .sensoryFeedback(.success, trigger: justLogged.count) { old, new in new > old }
         .alert("Couldn't Save", isPresented: .constant(error != nil)) {
@@ -262,18 +264,39 @@ struct FoodLibraryView: View {
     }
 
     private func loadRecents() async {
-        let since = Calendar.current.date(byAdding: .day, value: -Self.recentDays, to: .now)!
+        let since = Calendar.current.date(byAdding: .day, value: -Recents.days, to: .now)!
         // Recents are a shortcut, so if Health can't be read (such as while locked) just keep what's showing.
         guard let entries = try? await health.recentEntries(of: [], since: since, limit: 500) else { return }
+        // Foods logged before they had a serving weight can be weighed when logged again, if they match.
+        let logged = entries.map { entry in
+            var entry = entry
+            entry.food = entry.food?.withServingWeight(from: self.foods)
+            return entry
+        }
+        recentFoods = Recents.foods(in: logged, limit: Self.recentFoodLimit)
+        recentMeals = Recents.meals(in: logged, limit: Self.recentMealLimit)
+    }
+}
 
+/// Foods and meals logged lately, rebuilt from Health's food entries, so they work even after a saved food is
+/// deleted. Shared by Add Food and the Siri and Shortcuts actions.
+enum Recents {
+    /// How far back to look.
+    static let days = 30
+
+    /// Each food logged, newest first, once each.
+    static func foods(in entries: [LoggedEntry], limit: Int) -> [FoodPortion] {
         var foods: [FoodPortion] = []
         for case let food? in entries.map(\.food) where !foods.contains(where: { $0.isSameFood(as: food) }) {
             foods.append(food)
-            if foods.count == Self.recentFoodLimit { break }
+            if foods.count == limit { break }
         }
-        recentFoods = foods
+        return foods
+    }
 
-        // Meals of two or more foods, newest first, skipping repeats of the same foods at the same meal.
+    /// Meals of at least `minimumFoods` foods (two by default, since one food is a recent food), newest first,
+    /// skipping repeats of the same foods at the same meal.
+    static func meals(in entries: [LoggedEntry], limit: Int, minimumFoods: Int = 2) -> [RecentMeal] {
         let calendar = Calendar.current
         var meals: [RecentMeal] = []
         var seen: Set<String> = []
@@ -282,13 +305,20 @@ struct FoodLibraryView: View {
         }
         for key in groups.keys.sorted(by: { $0.day != $1.day ? $0.day > $1.day : $0.meal.sortOrder > $1.meal.sortOrder }) {
             let entries = groups[key]!.sorted { $0.date < $1.date }
-            guard entries.count >= 2 else { continue }
+            guard entries.count >= minimumFoods else { continue }
             let meal = RecentMeal(day: key.day, meal: key.meal, foods: entries.compactMap(\.food))
             guard seen.insert(meal.id).inserted else { continue }
             meals.append(meal)
-            if meals.count == Self.recentMealLimit { break }
+            if meals.count == limit { break }
         }
-        recentMeals = meals
+        return meals
+    }
+
+    /// The most recent time this meal was logged before today, with however many foods it had, for logging it
+    /// again. Nil if it wasn't logged in the last `days` days.
+    static func lastMeal(_ meal: Meal, in entries: [LoggedEntry]) -> RecentMeal? {
+        meals(in: entries.filter { $0.meal == meal && !Calendar.current.isDateInToday($0.date) },
+              limit: 1, minimumFoods: 1).first
     }
 
     private struct MealKey: Hashable {
@@ -298,7 +328,7 @@ struct FoodLibraryView: View {
 }
 
 /// The foods eaten at one meal on one day.
-private struct RecentMeal: Identifiable {
+struct RecentMeal: Identifiable {
     let day: Date
     let meal: Meal
     let foods: [FoodPortion]
@@ -322,7 +352,7 @@ private struct RecentMeal: Identifiable {
     }
 }
 
-private extension Meal {
+extension Meal {
     var sortOrder: Int { Meal.allCases.firstIndex(of: self)! }
 }
 
@@ -336,15 +366,9 @@ extension FoodPortion {
         name.lowercased() + "\u{1F}" + brand.lowercased()
     }
 
-    /// "Brand · 2 × 1 cup · 300 kcal", skipping whatever is missing.
+    /// "Brand · 2 × 1 cup · 300 kcal", or "Brand · 35 g · 140 kcal" when weighed, skipping whatever is missing.
     var summary: String {
-        let count = servings.formatted(.number.precision(.fractionLength(0...2)))
-        let amount = if servingSize.isEmpty {
-            servings == 1 ? "1 serving" : "\(count) servings"
-        } else {
-            servings == 1 ? servingSize : "\(count) × \(servingSize)"
-        }
-        return [brand, amount, formatCalories(calories)].filter { !$0.isEmpty }.joined(separator: " · ")
+        [brand, amountText, formatCalories(calories)].filter { !$0.isEmpty }.joined(separator: " · ")
     }
 }
 
@@ -358,15 +382,19 @@ extension View {
 
 // MARK: - Logging
 
-/// Logs one food, by the serving.
+/// Logs one food, by the serving or by weight. Also corrects a food already logged.
 struct LogFoodView: View {
     /// Marks the saved food or recipe this came from, if any, as just logged so it moves up its list.
     private let markLogged: () -> Void
     /// Called after saving; pops this screen when nil.
     var onSaved: (() -> Void)?
+    /// A logged food being corrected. Saving replaces its entry in Health and leaves saved foods and recipes alone,
+    /// including when they were last logged.
+    private var editing: LoggedEntry?
 
     @Environment(HealthStore.self) private var health
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var portion: FoodPortion
     @State private var meal = Meal(at: .now)
     /// Once the user picks a meal, changing the time no longer changes it.
@@ -375,6 +403,8 @@ struct LogFoodView: View {
     @State private var error: String?
     @State private var isSaving = false
     @State private var saved = false
+    /// The correction saved but the original couldn't be deleted.
+    @State private var incompleteEdit: IncompleteEdit?
 
     init(food: Food, onSaved: (() -> Void)? = nil) {
         self.init(food.portion, food: food, onSaved: onSaved)
@@ -386,6 +416,16 @@ struct LogFoodView: View {
 
     init(recipe: Recipe, onSaved: (() -> Void)? = nil) {
         self.init(recipe.portion, onSaved: onSaved) { recipe.lastLogged = .now }
+    }
+
+    /// Changes the servings (or weight, if it was saved with one), meal, or date and time of a logged food. Its
+    /// nutrition per serving comes from the entry itself.
+    init(editing entry: LoggedEntry, onSaved: (() -> Void)? = nil) {
+        self.init(entry.food ?? FoodPortion(name: entry.title, nutrients: [:]), onSaved: onSaved) {}
+        editing = entry
+        _meal = State(initialValue: entry.meal ?? Meal(at: entry.date))
+        _mealChosen = State(initialValue: true)
+        _date = State(initialValue: entry.date)
     }
 
     private init(_ portion: FoodPortion, onSaved: (() -> Void)?, markLogged: @escaping () -> Void) {
@@ -400,19 +440,39 @@ struct LogFoodView: View {
                 if !portion.servingSize.isEmpty {
                     LabeledContent("Serving Size", value: portion.servingSize)
                 }
-                HStack {
-                    Text("Servings")
-                    Spacer()
-                    TextField("1", value: $portion.servings, format: .number.precision(.fractionLength(0...2)))
-                        .keyboardType(.decimalPad)
-                        .multilineTextAlignment(.trailing)
-                        .monospacedDigit()
-                        .frame(maxWidth: 60)
-                    Stepper("Servings", value: $portion.servings, in: 0.5...20, step: 0.5)
-                        .labelsHidden()
+                if portion.canWeigh {
+                    Picker("Enter In", selection: unitBinding) {
+                        Text("Servings").tag(WeightUnit?.none)
+                        ForEach(WeightUnit.allCases) { Text($0.title).tag(Optional($0)) }
+                    }
+                    .pickerStyle(.segmented)
+                }
+                let amount = HStack {
+                    AmountField(portion: $portion, width: dynamicTypeSize.isAccessibilitySize ? .infinity : 70)
+                    if let unit = portion.enteredWeightUnit {
+                        Text(unit.label).foregroundStyle(.secondary)
+                    }
+                    AmountStepper(portion: $portion, servings: 0.5...20)
+                }
+                // At the largest text sizes the amount gets its own line, so it isn't cut off.
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading) {
+                        Text(portion.enteredWeightUnit == nil ? "Servings" : "Weight")
+                        amount
+                    }
+                } else {
+                    HStack {
+                        Text(portion.enteredWeightUnit == nil ? "Servings" : "Weight")
+                        Spacer()
+                        amount
+                    }
                 }
             } header: {
                 if !portion.brand.isEmpty { Text(portion.brand) }
+            } footer: {
+                if let grams = portion.gramsPerServing, portion.canWeigh {
+                    Text("One serving weighs \(WeightUnit.grams.format(grams: grams)).")
+                }
             }
             NutritionTotals(portions: [portion])
             MealAndTimeSection(meal: $meal, mealChosen: $mealChosen, date: $date)
@@ -422,7 +482,7 @@ struct LogFoodView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                Button("Log", action: save).disabled(isSaving || portion.servings <= 0)
+                Button(editing == nil ? "Log" : "Save", action: save).disabled(isSaving || portion.servings <= 0)
             }
         }
         .sensoryFeedback(.success, trigger: saved)
@@ -431,21 +491,72 @@ struct LogFoodView: View {
         } message: {
             Text(error ?? "")
         }
+        .incompleteEditAlert($incompleteEdit, onDone: close)
+    }
+
+    private var unitBinding: Binding<WeightUnit?> {
+        Binding { portion.enteredWeightUnit } set: { portion.enter(in: $0) }
     }
 
     private func save() {
+        guard !isSaving else { return }
         isSaving = true
         Task {
-            defer { isSaving = false }
             do {
-                try await health.saveFoods([portion], meal: meal, date: date)
-                markLogged()
-                saved.toggle()
-                if let onSaved { onSaved() } else { dismiss() }
+                try await health.saveFoods([portion], meal: meal, date: date, replacing: editing)
             } catch {
-                self.error = error.healthMessage
+                if let incomplete = IncompleteEdit(error) {
+                    // The correction saved, so Save stays off; the alert offers to finish the edit.
+                    incompleteEdit = incomplete
+                } else {
+                    self.error = error.healthMessage
+                    isSaving = false
+                }
+                return
             }
+            if editing == nil { markLogged() }
+            saved.toggle()
+            close()
         }
+    }
+
+    private func close() {
+        if let onSaved { onSaved() } else { dismiss() }
+    }
+}
+
+/// Types a portion's amount in the unit it's entered in: servings, grams or ounces.
+private struct AmountField: View {
+    @Binding var portion: FoodPortion
+    let width: CGFloat
+
+    var body: some View {
+        let digits = portion.enteredWeightUnit?.fractionDigits ?? 2
+        TextField("0", value: $portion.enteredAmount, format: .number.precision(.fractionLength(0...digits)))
+            .keyboardType(.decimalPad)
+            .multilineTextAlignment(.trailing)
+            .monospacedDigit()
+            .frame(maxWidth: width)
+            .accessibilityLabel(portion.enteredWeightUnit.map { "\($0.title) of \(portion.name)" }
+                ?? "Servings of \(portion.name)")
+    }
+}
+
+/// Steps a portion's amount: half servings, 5 g or a quarter ounce at a time.
+private struct AmountStepper: View {
+    @Binding var portion: FoodPortion
+    /// The range when entering servings.
+    let servings: ClosedRange<Double>
+
+    var body: some View {
+        let range: ClosedRange<Double> = switch portion.enteredWeightUnit {
+        case .grams?: 0...5000
+        case .ounces?: 0...176
+        case nil: servings
+        }
+        Stepper("Amount of \(portion.name)", value: $portion.enteredAmount, in: range,
+                step: portion.enteredWeightUnit?.step ?? 0.5)
+            .labelsHidden()
     }
 }
 
@@ -468,6 +579,14 @@ struct LogMealView: View {
     @State private var isSaving = false
     @State private var saved = false
     @State private var savingRecipe = false
+    @State private var addingFood = false
+    @State private var replacing: Replacement?
+
+    /// A food in the list being swapped for another, such as a meal-photo guess for the right saved food.
+    private struct Replacement: Identifiable {
+        let id: FoodPortion.ID
+        let name: String
+    }
 
     /// With no meal, it defaults to the usual one for the time, which is now unless `date` says otherwise.
     init(title: String, portions: [FoodPortion], meal: Meal? = nil, date: Date? = nil, note: String? = nil,
@@ -484,11 +603,22 @@ struct LogMealView: View {
     var body: some View {
         Form {
             Section {
-                ForEach($portions) { PortionRow(portion: $0, zeroText: "Left out") }
+                ForEach($portions) { $portion in
+                    PortionRow(portion: $portion, zeroText: "Left out")
+                        .swipeActions {
+                            Button("Replace", systemImage: "arrow.left.arrow.right") { replace(portion) }
+                                .tint(.indigo)
+                        }
+                        .contextMenu {
+                            Button("Replace \(portion.name)", systemImage: "arrow.left.arrow.right") { replace(portion) }
+                        }
+                }
+                Button("Add Food", systemImage: "plus.circle") { addingFood = true }
             } header: {
                 Text("Foods")
             } footer: {
-                Text([note, "Set a food to 0 servings to leave it out."].compactMap { $0 }.joined(separator: " "))
+                Text([note, "Set a food to 0 to leave it out, or swipe left on it to replace it with one of your foods."]
+                    .compactMap { $0 }.joined(separator: " "))
             }
             NutritionTotals(portions: included)
             MealAndTimeSection(meal: $meal, mealChosen: $mealChosen, date: $date)
@@ -504,6 +634,26 @@ struct LogMealView: View {
             NavigationStack {
                 RecipeEditor(ingredients: included) { _ in savingRecipe = false }
                     .cancelButton { savingRecipe = false }
+            }
+        }
+        .sheet(isPresented: $addingFood) {
+            NavigationStack {
+                FoodPicker(title: "Add Food", allowsMultiple: true) { picked in
+                    portions += picked
+                    addingFood = false
+                }
+                .cancelButton { addingFood = false }
+            }
+        }
+        .sheet(item: $replacing) { target in
+            NavigationStack {
+                FoodPicker(title: "Replace \(target.name)") { picked in
+                    if let food = picked.first, let index = portions.firstIndex(where: { $0.id == target.id }) {
+                        portions[index] = portions[index].replaced(by: food)
+                    }
+                    replacing = nil
+                }
+                .cancelButton { replacing = nil }
             }
         }
         .navigationTitle(title)
@@ -525,7 +675,12 @@ struct LogMealView: View {
         portions.filter { $0.servings > 0 }
     }
 
+    private func replace(_ portion: FoodPortion) {
+        replacing = Replacement(id: portion.id, name: portion.name)
+    }
+
     private func save() {
+        guard !isSaving else { return }
         isSaving = true
         Task {
             defer { isSaving = false }
@@ -541,30 +696,63 @@ struct LogMealView: View {
     }
 }
 
-/// A food in a list of several, with its servings to change. At zero servings it shows `zeroText`.
+/// A food in a list of several, with its amount to change: servings, or a weight for a food with a known serving
+/// weight. At zero it shows `zeroText`.
 struct PortionRow: View {
     @Binding var portion: FoodPortion
     let zeroText: String
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(portion.name)
-                    .foregroundStyle(portion.servings > 0 ? .primary : .secondary)
-                Text(portion.servings > 0 ? portion.summary : zeroText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        // At the largest text sizes the amount goes under the food, so neither is cut off.
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 8) {
+                food
+                HStack { amount(width: .infinity) }
             }
-            Spacer()
-            TextField("0", value: $portion.servings, format: .number.precision(.fractionLength(0...2)))
-                .keyboardType(.decimalPad)
-                .multilineTextAlignment(.trailing)
-                .monospacedDigit()
-                .frame(maxWidth: 44)
-                .accessibilityLabel("Servings of \(portion.name)")
-            Stepper("Servings of \(portion.name)", value: $portion.servings, in: 0...50, step: 0.5)
-                .labelsHidden()
+        } else {
+            HStack {
+                food
+                Spacer()
+                amount(width: portion.enteredWeightUnit == nil ? 44 : 56)
+            }
         }
+    }
+
+    private var food: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(portion.name)
+                .foregroundStyle(portion.servings > 0 ? .primary : .secondary)
+            Text(portion.servings > 0 ? portion.summary : zeroText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func amount(width: CGFloat) -> some View {
+        AmountField(portion: $portion, width: width)
+        if portion.canWeigh {
+            Menu {
+                Picker("Enter \(portion.name) In", selection: unitBinding) {
+                    Text("Servings").tag(WeightUnit?.none)
+                    ForEach(WeightUnit.allCases) { Text($0.title).tag(Optional($0)) }
+                }
+            } label: {
+                HStack(spacing: 2) {
+                    Text(portion.enteredWeightUnit?.label ?? "×")
+                    Image(systemName: "chevron.up.chevron.down").font(.caption2)
+                }
+            }
+            .accessibilityLabel("Unit for \(portion.name)")
+            .accessibilityValue(portion.enteredWeightUnit?.title ?? "Servings")
+        }
+        AmountStepper(portion: $portion, servings: 0...50)
+    }
+
+    private var unitBinding: Binding<WeightUnit?> {
+        Binding { portion.enteredWeightUnit } set: { portion.enter(in: $0) }
     }
 }
 
@@ -630,12 +818,31 @@ struct FoodEditor: View {
                 textField("Name", text: $draft.name, prompt: "Required")
                 textField("Brand", text: $draft.brand, prompt: "Optional")
                 textField("Serving Size", text: $draft.servingSize, prompt: "e.g. 1 cup or 30 g")
+                LabeledContent("Serving Weight") {
+                    HStack(spacing: 4) {
+                        TextField("Serving Weight", value: $draft.gramsPerServing,
+                                  format: .number.precision(.fractionLength(0...1)), prompt: Text("Optional"))
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                            .monospacedDigit()
+                            .accessibilityLabel("Serving Weight in grams")
+                        Text("g").foregroundStyle(.secondary)
+                    }
+                }
+                if let stated = draft.statedServingWeight {
+                    Button("Use \(WeightUnit.grams.format(grams: stated)) from Serving Size", systemImage: "scalemass") {
+                        draft.gramsPerServing = stated
+                    }
+                }
             } footer: {
-                switch draft.source {
-                case .database: Text("Filled in from Open Food Facts. Check it against the label before saving.")
-                case .notFound: Text("This barcode isn't in Open Food Facts. Scan its nutrition label or enter the details.")
-                case .label: Text("Filled in from the label. Check each amount against it, and add a name, before saving.")
-                case .manual: EmptyView()
+                VStack(alignment: .leading, spacing: 6) {
+                    switch draft.source {
+                    case .database: Text("Filled in from Open Food Facts. Check it against the label before saving.")
+                    case .notFound: Text("This barcode isn't in Open Food Facts. Scan its nutrition label or enter the details.")
+                    case .label: Text("Filled in from the label. Check each amount against it, and add a name, before saving.")
+                    case .manual: EmptyView()
+                    }
+                    Text("With a serving weight, you can log this food in grams or ounces.")
                 }
             }
             Section {
@@ -699,6 +906,7 @@ struct FoodEditor: View {
                     .multilineTextAlignment(.trailing)
                     .monospacedDigit()
                     .frame(maxWidth: 90)
+                    .accessibilityLabel("\(metric.name) in \(option.label)")
                 Text(option.label).foregroundStyle(.secondary)
             }
         }

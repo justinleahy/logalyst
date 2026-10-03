@@ -19,8 +19,9 @@ final class Recipe {
         self.ingredients = ingredients
     }
 
-    /// Each ingredient's nutrition per serving and how many servings go in. They're copies, so changing or
-    /// deleting a saved food later doesn't change recipes made with it.
+    /// Each ingredient's nutrition per serving and how many servings go in, with its weight when it was weighed.
+    /// They're copies, so changing or deleting a saved food later doesn't change recipes made with it. A recipe is
+    /// still logged by the serving: its own weight isn't known, and isn't guessed from its ingredients'.
     var ingredients: [FoodPortion] {
         get { (try? JSONDecoder().decode([FoodPortion].self, from: ingredientData)) ?? [] }
         set { ingredientData = (try? JSONEncoder().encode(newValue)) ?? Data() }

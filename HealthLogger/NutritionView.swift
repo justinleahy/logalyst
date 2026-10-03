@@ -14,6 +14,7 @@ struct NutritionView: View {
     @State private var scanning = false
     @State private var scanningLabel = false
     @State private var photographingMeal = false
+    @State private var composingMeal = false
     @State private var trendMetric = Self.water
     @State private var editingGoals = false
     @State private var error: String?
@@ -28,6 +29,7 @@ struct NutritionView: View {
     var body: some View {
         NavigationStack {
             List {
+                UnfinishedEditsSection { self.error = $0 }
                 hydrationSection
                 if !waterToday.isEmpty {
                     waterLogSection
@@ -40,7 +42,11 @@ struct NutritionView: View {
             .navigationTitle("Nutrition")
             .navigationDestination(for: Metric.self) { EntryView(metric: $0) }
             .navigationDestination(for: LoggedEntry.self) { entry in
-                if let metric = entry.metric { EntryView(metric: metric, editing: entry) }
+                if let metric = entry.metric {
+                    EntryView(metric: metric, editing: entry)
+                } else if entry.food != nil {
+                    LogFoodView(editing: entry)
+                }
             }
             .toolbar {
                 Button("Goals", systemImage: "target") { editingGoals = true }
@@ -49,6 +55,7 @@ struct NutritionView: View {
             .sheet(isPresented: $scanning) { ScanFoodView() }
             .sheet(isPresented: $scanningLabel) { ScanLabelView() }
             .sheet(isPresented: $photographingMeal) { MealPhotoView() }
+            .sheet(isPresented: $composingMeal) { NewMealView() }
             .refreshable { await reload() }
             .task(id: health.changeCount) { await reload() }
             // Loads that ran while the phone was locked (such as when iOS prewarms the app) failed, so retry on unlock.
@@ -121,13 +128,15 @@ struct NutritionView: View {
             if !entries.isEmpty {
                 Section {
                     ForEach(entries) { entry in
-                        HStack {
-                            VStack(alignment: .leading) {
-                                Text(entry.title)
-                                Text(entry.date, style: .time).font(.caption).foregroundStyle(.secondary)
+                        NavigationLink(value: entry) {
+                            HStack {
+                                VStack(alignment: .leading) {
+                                    Text(entry.title)
+                                    Text(entry.date, style: .time).font(.caption).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Text(entry.valueText).monospacedDigit().foregroundStyle(.secondary)
                             }
-                            Spacer()
-                            Text(entry.valueText).monospacedDigit().foregroundStyle(.secondary)
                         }
                         .logAgainActions(entry, in: health) { self.error = $0 }
                     }
@@ -146,6 +155,11 @@ struct NutritionView: View {
                 FoodLibraryView()
             } label: {
                 Label("Add Food", systemImage: "plus.circle")
+            }
+            Button {
+                composingMeal = true
+            } label: {
+                Label("New Meal", systemImage: "fork.knife.circle")
             }
             if MealPhoto.isAvailable {
                 Button {
@@ -168,7 +182,8 @@ struct NutritionView: View {
             if foodToday.isEmpty { Text("Food") }
         } footer: {
             if !foodToday.isEmpty {
-                Text("Swipe left to remove a food (its nutrients are removed from Health too), or right to log it again.")
+                Text("Tap a food to change it, swipe left to remove it (its nutrients are removed from Health too), "
+                     + "or right to log it again.")
             }
         }
     }

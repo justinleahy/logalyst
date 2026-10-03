@@ -1,0 +1,140 @@
+import Foundation
+import HealthKit
+import SwiftData
+import Testing
+@testable import HealthLogger
+
+/// Siri and Shortcuts food actions, run against the app's own store and the simulator's Health store. Each test uses
+/// foods with its own names and removes them afterwards.
+@MainActor
+@Suite(.serialized)
+final class FoodIntentTests {
+    private let context = HealthLoggerApp.sharedContainer.mainContext
+    private let health = HealthStore(syncs: false)
+    private let tag = String(UUID().uuidString.prefix(6))
+    private var made: [Food] = []
+    private var madeRecipes: [Recipe] = []
+
+    init() throws {
+        let status = HKHealthStore().authorizationStatus(for: HKQuantityType(.dietaryEnergyConsumed))
+        try #require(status == .sharingAuthorized, "Open Logalyst in this simulator and allow Health access first.")
+    }
+
+    private func food(_ name: String, brand: String = "", calories: Double = 200) -> Food {
+        let food = Food(FoodDraft(name: "\(name) \(tag)", brand: brand, servingSize: "1 bowl",
+                                  nutrients: ["dietaryEnergyConsumed": calories, "dietaryProtein": 10]))
+        context.insert(food)
+        made.append(food)
+        return food
+    }
+
+    private func entries(named names: [String], since start: Date) async throws -> [LoggedEntry] {
+        try await health.recentEntries(of: [], since: start).filter { names.contains($0.title) }
+    }
+
+    private func cleanUp(names: [String], since start: Date) async throws {
+        for entry in try await entries(named: names, since: start) { try await health.delete(entry) }
+        made.forEach(context.delete)
+        madeRecipes.forEach(context.delete)
+        try context.save()
+    }
+
+    @Test func foodsAreFoundByNameAndAmbiguousNamesOfferEach() async throws {
+        let greek = food("Greek Yogurt")
+        let vanilla = food("Vanilla Yogurt")
+        _ = food("Granola")
+        let recipe = Recipe(name: "Yogurt Bowl \(tag)", servings: 2, ingredients: [greek.portion])
+        context.insert(recipe)
+        madeRecipes.append(recipe)
+        try context.save()
+
+        let query = SavedFoodQuery()
+        let yogurts = try await query.entities(matching: "yogurt \(tag)")
+        #expect(Set(yogurts.map(\.name)) == [greek.name, vanilla.name, recipe.name])
+        #expect(try await query.entities(matching: "Granola \(tag)").map(\.name) == ["Granola \(tag)"])
+
+        // A shortcut saved with an entity finds it again by ID, and a deleted food is no longer found.
+        let saved = try #require(yogurts.first { $0.name == greek.name })
+        #expect(try await query.entities(for: [saved.id]).map(\.name) == [greek.name])
+        #expect(try await query.suggestedEntities().contains { $0.id == saved.id })
+        context.delete(greek)
+        made.removeAll { $0 === greek }
+        try context.save()
+        #expect(try await query.entities(for: [saved.id]).isEmpty)
+        try await cleanUp(names: [], since: .now)
+    }
+
+    @Test func logFoodSavesItAndMarksItLogged() async throws {
+        let start = Date.now.addingTimeInterval(-60)
+        let oats = food("Oats", brand: "Quaker", calories: 150)
+        try context.save()
+        let entity = SavedFoodEntity(oats)
+
+        let intent = LogFoodIntent(food: entity, servings: 2, meal: .breakfast)
+        _ = try await intent.perform()
+
+        let logged = try await entries(named: [oats.name], since: start)
+        #expect(logged.count == 1)
+        #expect(logged.first?.food?.calories == 300)
+        #expect(logged.first?.food?.servings == 2)
+        #expect(logged.first?.food?.brand == "Quaker")
+        #expect(logged.first?.meal == .breakfast)
+        #expect(oats.lastLogged.map { $0 > start } == true)
+        try await cleanUp(names: [oats.name], since: start)
+    }
+
+    @Test func aFoodThatsGoneIsReportedAndNothingIsLogged() async throws {
+        let start = Date.now.addingTimeInterval(-60)
+        let gone = food("Gone")
+        try context.save()
+        let entity = SavedFoodEntity(gone)
+        context.delete(gone)
+        made.removeAll()
+        try context.save()
+
+        await #expect(throws: IntentMessage.self) { _ = try await LogFoodIntent(food: entity).perform() }
+        #expect(try await entries(named: [entity.name], since: start).isEmpty)
+        try await cleanUp(names: [], since: start)
+    }
+
+    /// "Log my last snack again": the most recent snack before today, all its foods, now.
+    @Test func theLastMealBeforeTodayIsLoggedAgain() async throws {
+        let calendar = Calendar.current
+        let yesterday = calendar.date(byAdding: .day, value: -1, to: calendar.startOfDay(for: .now))!
+        let snackTime = calendar.date(bySettingHour: 15, minute: 0, second: 0, of: yesterday)!
+        let apple = FoodPortion(name: "Apple \(tag)", servingSize: "1 medium", nutrients: ["dietaryEnergyConsumed": 95])
+        var cheese = FoodPortion(name: "Cheese \(tag)", servingSize: "1 slice", nutrients: ["dietaryEnergyConsumed": 110])
+        cheese.servings = 2
+        try await health.saveFoods([apple, cheese], meal: .snack, date: snackTime)
+        let start = Date.now.addingTimeInterval(-60)
+
+        _ = try await LogRecentMealIntent(meal: .snack).perform()
+
+        let today = try await entries(named: [apple.name, cheese.name], since: start)
+        #expect(Set(today.map(\.title)) == [apple.name, cheese.name])
+        #expect(today.allSatisfy { $0.meal == .snack })
+        #expect(today.first { $0.title == cheese.name }?.food?.servings == 2)
+        try await cleanUp(names: [apple.name, cheese.name], since: snackTime.addingTimeInterval(-60))
+    }
+
+    @Test func recentMealsChooseByMealAndSkipToday() {
+        func entry(_ name: String, _ meal: Meal, daysAgo: Int, hour: Int) -> LoggedEntry {
+            let day = Calendar.current.date(byAdding: .day, value: -daysAgo, to: .now)!
+            let date = Calendar.current.date(bySettingHour: hour, minute: 0, second: 0, of: day)!
+            let sample = HKQuantitySample(type: HKQuantityType(.dietaryEnergyConsumed),
+                                          quantity: HKQuantity(unit: .kilocalorie(), doubleValue: 100), start: date, end: date)
+            return LoggedEntry(sample: sample, metric: nil, title: name, systemImage: "fork.knife", valueText: "100 kcal",
+                               food: FoodPortion(name: name, nutrients: ["dietaryEnergyConsumed": 100]), meal: meal)
+        }
+        let entries = [
+            entry("Toast", .breakfast, daysAgo: 0, hour: 8),
+            entry("Eggs", .breakfast, daysAgo: 2, hour: 8), entry("Juice", .breakfast, daysAgo: 2, hour: 8),
+            entry("Soup", .lunch, daysAgo: 1, hour: 12),
+        ]
+        #expect(Recents.lastMeal(.breakfast, in: entries)?.foods.map(\.name).sorted() == ["Eggs", "Juice"])
+        #expect(Recents.lastMeal(.lunch, in: entries)?.foods.map(\.name) == ["Soup"])
+        #expect(Recents.lastMeal(.dinner, in: entries) == nil)
+        // Add Food's recent meals still need two foods.
+        #expect(Recents.meals(in: entries, limit: 5).map(\.meal) == [.breakfast])
+    }
+}

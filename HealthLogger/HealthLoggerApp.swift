@@ -15,6 +15,8 @@ struct HealthLoggerApp: App {
     @State private var tipJar = TipJar()
     private let container: ModelContainer
     private let cloudSettings: CloudSettings
+    /// Tells Siri about food names as foods and recipes change.
+    private let foodShortcutNames = FoodShortcutNames()
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -30,7 +32,7 @@ struct HealthLoggerApp: App {
         #if DEBUG
         Self.initializeCloudKitSchemaIfAsked()
         #endif
-        container = Self.makeContainer()
+        container = Self.sharedContainer
         cloudSettings = CloudSettings(container: container) {
             health.reloadSettings()
             goals.reload()
@@ -54,6 +56,7 @@ struct HealthLoggerApp: App {
             if phase == .active {
                 reminders.reschedule()
                 cloudSettings.sync()
+                Task { await health.finishPendingEdits() }
             }
         }
     }
@@ -63,6 +66,9 @@ struct HealthLoggerApp: App {
     /// Saved foods, recipes and settings, synced to the user's private iCloud database with every field
     /// end-to-end encrypted. If iCloud can't be set up, they're kept on this device only.
     private static let models: [any PersistentModel.Type] = [Food.self, Recipe.self, SyncedSetting.self]
+
+    /// The app's one container, which its screens and its Siri and Shortcuts actions share. Made on first use.
+    static let sharedContainer = makeContainer()
 
     private static func makeContainer() -> ModelContainer {
         let schema = Schema(models)

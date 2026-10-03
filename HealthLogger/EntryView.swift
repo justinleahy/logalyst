@@ -3,7 +3,8 @@ import HealthKit
 
 struct EntryView: View {
     let metric: Metric
-    /// An entry to change. Health can't edit a sample, so saving logs the new values and then deletes this one.
+    /// An entry to change. Health can't edit a sample, so saving logs the new values and then deletes this one
+    /// (see `HealthStore.replace`).
     var editing: LoggedEntry?
 
     @Environment(HealthStore.self) private var health
@@ -24,8 +25,8 @@ struct EntryView: View {
     @State private var saved = false
     /// A save is in flight, so another tap doesn't log the entry twice.
     @State private var isSaving = false
-    /// The edit saved but the original couldn't be deleted, so leave after the alert rather than save it twice.
-    @State private var closeAfterError = false
+    /// The edit saved but the original couldn't be deleted, so offer to finish it rather than save it twice.
+    @State private var incompleteEdit: IncompleteEdit?
     @FocusState private var focusedField: Field?
 
     private enum Field { case value, systolic, diastolic }
@@ -70,14 +71,12 @@ struct EntryView: View {
             }
         }
         .sensoryFeedback(.success, trigger: saved)
-        .alert(closeAfterError ? "Couldn't Remove Original" : "Couldn't Save", isPresented: .constant(error != nil)) {
-            Button("OK") {
-                error = nil
-                if closeAfterError { dismiss() }
-            }
+        .alert("Couldn't Save", isPresented: .constant(error != nil)) {
+            Button("OK") { error = nil }
         } message: {
             Text(error ?? "")
         }
+        .incompleteEditAlert($incompleteEdit) { dismiss() }
         .task { await prefill() }
     }
 
@@ -324,23 +323,18 @@ struct EntryView: View {
         isSaving = true
         Task {
             do {
+                // Editing deletes the original only after the correction saved, so a failure can leave both
+                // entries, never lose one.
                 try await saveEntry()
             } catch {
-                self.error = error.healthMessage
-                isSaving = false
-                return
-            }
-            // From here the screen closes, so Save stays off.
-            // Deleting only after the new entry saved means a failure can leave a duplicate, never lose the entry.
-            if let editing {
-                do {
-                    try await health.delete(editing)
-                } catch {
-                    closeAfterError = true
-                    self.error = "The new entry was saved, but the original is still in Health, so History shows both. "
-                        + "Swipe to delete the one you don't want.\n\n\(error.healthMessage)"
-                    return
+                if let incomplete = IncompleteEdit(error) {
+                    // The correction saved, so Save stays off; the alert offers to finish the edit.
+                    incompleteEdit = incomplete
+                } else {
+                    self.error = error.healthMessage
+                    isSaving = false
                 }
+                return
             }
             saved.toggle()
             dismiss()
@@ -351,17 +345,18 @@ struct EntryView: View {
         switch metric.kind {
         case .quantity:
             guard let option, let value else { return }
-            try await health.saveQuantity(metric, value: value, option: option, date: date, mealTime: mealTime)
+            try await health.saveQuantity(metric, value: value, option: option, date: date, mealTime: mealTime,
+                                          replacing: editing)
         case .bloodPressure:
             guard let systolic, let diastolic else { return }
-            try await health.saveBloodPressure(systolic: systolic, diastolic: diastolic, date: date)
+            try await health.saveBloodPressure(systolic: systolic, diastolic: diastolic, date: date, replacing: editing)
         case .symptom:
             try await health.saveSymptom(metric, severity: severity, start: date,
-                                         end: hasDuration ? endDate : date)
+                                         end: hasDuration ? endDate : date, replacing: editing)
         case .timedEvent:
-            try await health.saveTimedEvent(metric, duration: duration, end: date)
+            try await health.saveTimedEvent(metric, duration: duration, end: date, replacing: editing)
         case .sexualActivity:
-            try await health.saveSexualActivity(protection: protection, date: date)
+            try await health.saveSexualActivity(protection: protection, date: date, replacing: editing)
         }
     }
 }

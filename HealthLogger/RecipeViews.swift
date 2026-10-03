@@ -47,7 +47,8 @@ struct RecipeEditor: View {
             } header: {
                 Text("Ingredients")
             } footer: {
-                Text("Amounts are in servings of each food. Swipe to remove one.")
+                Text("Amounts are in servings of each food, or by weight for foods with a serving weight. "
+                     + "Swipe to remove one.")
             }
             if servings > 0 {
                 NutritionTotals(portions: [perServing], title: "Nutrition per Serving")
@@ -63,8 +64,8 @@ struct RecipeEditor: View {
         }
         .sheet(isPresented: $addingIngredient) {
             NavigationStack {
-                IngredientPicker { ingredient in
-                    ingredients.append(ingredient)
+                FoodPicker(title: "Add Ingredient") { picked in
+                    ingredients += picked
                     addingIngredient = false
                 }
                 .cancelButton { addingIngredient = false }
@@ -97,63 +98,5 @@ struct RecipeEditor: View {
             context.insert(saved)
         }
         onSave(saved)
-    }
-}
-
-/// Picks a saved food to add to a recipe, one serving to start, or makes a new one.
-private struct IngredientPicker: View {
-    let onPick: (FoodPortion) -> Void
-
-    @Query(sort: \Food.name) private var foods: [Food]
-    @State private var search = ""
-    @State private var creating = false
-
-    var body: some View {
-        List(visibleFoods) { food in
-            Button {
-                onPick(food.portion)
-            } label: {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(food.name).foregroundStyle(.primary)
-                    if !food.summary.isEmpty {
-                        Text(food.summary).font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-            }
-        }
-        .overlay {
-            if foods.isEmpty {
-                ContentUnavailableView {
-                    Label("No Foods Yet", systemImage: "fork.knife")
-                } description: {
-                    Text("Recipes are made from your saved foods. Create one to add it.")
-                } actions: {
-                    Button("New Food") { creating = true }
-                }
-            } else if visibleFoods.isEmpty {
-                ContentUnavailableView.search(text: search)
-            }
-        }
-        .searchable(text: $search, prompt: "Search My Foods")
-        .navigationTitle("Add Ingredient")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            Button("New Food", systemImage: "plus") { creating = true }
-        }
-        .sheet(isPresented: $creating) {
-            NavigationStack {
-                FoodEditor { food in
-                    creating = false
-                    onPick(food.portion)
-                }
-                .cancelButton { creating = false }
-            }
-        }
-    }
-
-    private var visibleFoods: [Food] {
-        search.isEmpty ? foods : foods.filter {
-            $0.name.localizedStandardContains(search) || $0.brand.localizedStandardContains(search)
-        }
     }
 }

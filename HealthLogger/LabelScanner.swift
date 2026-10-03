@@ -38,9 +38,13 @@ struct ScanLabelView: View {
 }
 
 extension FoodDraft {
-    /// Fills in what a label gives: its serving size, if printed, and the nutrients it lists.
+    /// Fills in what a label gives: its serving size, if printed, with the weight it states in grams, and the
+    /// nutrients it lists. A serving given only as a volume, like "1 cup (240 mL)", has no weight.
     mutating func apply(_ label: NutritionLabel) {
-        if !label.servingSize.isEmpty { servingSize = label.servingSize }
+        if !label.servingSize.isEmpty {
+            servingSize = label.servingSize
+            gramsPerServing = ServingWeight.grams(in: label.servingSize)
+        }
         nutrients.merge(label.nutrients) { $1 }
         source = .label
     }
