@@ -92,12 +92,39 @@ iPhones that have used Logalyst before go straight to the app.
 - **Editing logged food:** tap a food in History or the Nutrition tab to change its servings (or weight, if it was
   logged with one), meal, or date and time. Its nutrition per serving comes from the entry itself, so editing or
   deleting the saved food doesn't change it, and editing it doesn't change the saved food or recipe.
-- **Photo of Meal** (iOS 27 or later with Apple Intelligence on): take or choose a photo of a meal, and Apple
-  Intelligence's on-device model lists each food and drink with the amount shown and its estimated calories,
-  macros, sugar, fiber and caffeine. Foods named like one of your saved foods or recipes use your nutrition
-  instead (and a saved food's serving weight). Check and correct them on the meal screen (add or replace foods,
-  change amounts, leave foods out, meal and time) before logging, or save them as a recipe. A photo from your library is logged at the time it was taken. Nothing leaves the
-  iPhone, and the button only appears where the model is available.
+- **Photo of Meal** (iOS 27 or later with Apple Intelligence on): take or choose a photo of a meal, optionally
+  add details the photo can't show ("double chicken, no sour cream"), and Apple Intelligence's on-device model
+  lists each food and drink with the amount shown and its estimated calories, macros, sugar, fiber and caffeine.
+  Foods named like one of your saved foods or recipes use your nutrition instead (and a saved food's serving
+  weight). Check and correct them on the meal screen (add or replace foods, change amounts, leave foods out, meal
+  and time) before logging, or save them as a recipe. A photo from your library is logged at the time it was
+  taken. Without a restaurant or brand nothing leaves the iPhone, and the button only appears where the model is
+  available. Each food from a photo is marked *Estimate*, in the meal and once it's logged.
+- **Restaurant and brand nutrition:** give a photo of a meal the restaurant or brand it's from, such as Chipotle,
+  then tap *Look Up Nutrition*. The model reads the photo (and your details) on the iPhone, naming each part of the
+  meal the way the brand portions it ("chicken", "white rice"). Logalyst then finds the brand's own published
+  nutrition: Apple Maps gives its website (or, for a brand Maps doesn't list, the on-device model suggests one,
+  used only if it's named for the brand and not another country's), and its nutrition pages are opened in a hidden
+  web view that keeps no cookies and blocks advertising, analytics and session-recording services and other
+  companies' images and frames. Links that lead to the nutrition, such as Chipotle's *Full Nutrition Facts* PDF,
+  are followed, as are nutrition pages in the site's sitemap, preferring ones for your country. Nutrition tables
+  are read directly (one food per row, columns named by the header, servings as text or grams); other text, such
+  as a menu page, is read by the on-device model, keeping only values printed beside their nutrient's name that
+  add up (calories against fat, carbohydrates and protein). Only the brand's name leaves the iPhone; the foods are
+  looked for in what's read. A clear match uses the published values per serving, scaled in the app by the
+  portions from the photo and details (double chicken is exactly twice each value), and is marked *Published per
+  4 oz* (or whatever the serving is), with its source linked under *Sources* with its website and the date it was
+  read. Nutrients a source doesn't publish stay unknown, and a gram serving weight is kept only when the source
+  gives one. A food that fits several published ones (rice: white or brown?) isn't counted until you *Choose*,
+  and one the model thinks may be hidden under the others isn't counted unless you *Include* it. Foods the brand
+  doesn't list fall back to the estimate, as does everything if the lookup fails (offline, the site doesn't
+  answer), with *Try Again*; if nothing is found, the brand's nutrition pages are linked. A saved food with the
+  same name never replaces a published match. Replacing or adding a food offers the brand's foods as well as
+  yours, filtered as you type, with a search of what the brand publishes when you tap Search. Logged entries and
+  recipes keep each food's published values and source, so later changes to the website don't change them. What's
+  read is cached on the iPhone for 24 hours. Checked on October 3, 2026, Chipotle, Panera, Five Guys and Subway
+  publish nutrition this can read; sites that build their nutrition only inside an interactive calculator (Taco
+  Bell, Wendy's) or lay their PDF out in separate blocks (Qdoba) fall back to estimates with links.
 - **Recipes:** in *Add Food*, tap ＋ and *New Recipe* to combine servings (or weights) of saved foods into a dish,
   and say how many servings it makes. It's logged by the serving like any food (e.g. "1/4 recipe"); its own
   weight isn't worked out from its ingredients'. It's saved to Health as one food entry with the per-serving
@@ -170,6 +197,9 @@ iPhones that have used Logalyst before go straight to the app.
 5. The Tip Jar loads its tips from `Config/TipJar.storekit` when run from Xcode, so they can be bought for free in
    testing. For TestFlight and the App Store, create consumable in-app purchases in App Store Connect with the
    product IDs in `TipJar.productIDs` (`HealthLogger/TipJar.swift`).
+6. Restaurant and brand lookup needs no account or key: it uses Apple Maps and the brands' own websites. Its
+   code is in `HealthLogger/BrandWebsite.swift` (finding and reading a brand's website) and
+   `HealthLogger/NutritionLookup.swift` (caching and matching).
 
 ## Testing
 
@@ -189,6 +219,15 @@ test logs foods under its own names. Debug builds take these launch arguments fo
 - `-SkipHealthAuthorization YES` doesn't ask for Health access, for UI tests on a simulator whose permission
   sheet they can't reach (the iOS 26 one).
 - `-SeedScreenshotData YES` fills a fresh simulator for App Store screenshots, as before.
+- `-StubMealPhoto YES` offers Photo of Meal on any simulator, with a *Use Test Photo* button, and finds the same
+  foods in any photo (a Chipotle bowl when a brand is given), so the meal screen can be tested without
+  Apple Intelligence.
+- `-StubNutritionLookup ok`, `offline`, `slow`, `rateLimited`, `unavailable` or `empty` answers lookups with test
+  data, or fails the given way, instead of reading brands' websites.
+
+Tests that read real websites (`LiveBrandWebsiteTests`, and the UI test `testLiveBrandLookup`) are skipped unless
+run with `TEST_RUNNER_LIVE_LOOKUP=1` in the environment; `TEST_RUNNER_LIVE_BRANDS="Panera Bread:broccoli cheddar
+soup,Subway:turkey"` also tries other brands and prints what each gives.
 
 `testComposeAMealWherePhotoOfMealIsUnavailable` is for an iOS 18–26 simulator, where Photo of Meal is hidden;
 it's skipped on iOS 27.
@@ -214,4 +253,5 @@ Shared/              Metric catalog, HealthStore (HealthKit read/write), Nutriti
                      (favorites and goals, Watch ↔ iPhone), app group settings, and the logging intents Siri, Shortcuts,
                      widget buttons and controls run, compiled into every target
 Config/              Entitlements and the widget extensions' Info.plists
+Website/             logalyst.app: the support and privacy pages (built from PRIVACY.md)
 ```

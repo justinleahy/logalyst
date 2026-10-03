@@ -105,6 +105,12 @@ struct FoodPortion: Identifiable, Hashable, Codable {
     var gramsPerServing: Double?
     /// The unit the amount was weighed in, or nil when it was entered in servings. Only set with `gramsPerServing`.
     var weightUnit: WeightUnit?
+    /// Where the nutrition per serving was published, for a food looked up online (added in 1.1). Nil for saved
+    /// foods, labels, barcodes and estimates.
+    var source: NutritionSource?
+    /// Whether the nutrition per serving is Apple Intelligence's estimate from a photo rather than a saved food,
+    /// a label or published values (added in 1.1).
+    var isEstimate = false
 
     /// Total amount eaten, in the metric's first unit option.
     func amount(of metricID: String) -> Double {
@@ -190,8 +196,12 @@ struct FoodPortion: Identifiable, Hashable, Codable {
 }
 
 extension FoodPortion {
+    private enum CodingKeys: String, CodingKey {
+        case id, name, brand, servingSize, nutrients, servings, gramsPerServing, weightUnit, source, isEstimate
+    }
+
     /// Recipes store their ingredients as a list of these, and a list that fails to decode loads as no ingredients,
-    /// so the weight fields (added in 1.1) are read leniently: missing or unreadable just means not weighed.
+    /// so the fields added in 1.1 are read leniently: missing or unreadable just means not weighed, and no source.
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
@@ -202,7 +212,40 @@ extension FoodPortion {
         servings = try container.decode(Double.self, forKey: .servings)
         gramsPerServing = (try? container.decodeIfPresent(Double.self, forKey: .gramsPerServing)) ?? nil
         weightUnit = (try? container.decodeIfPresent(WeightUnit.self, forKey: .weightUnit)) ?? nil
+        source = (try? container.decodeIfPresent(NutritionSource.self, forKey: .source)) ?? nil
+        isEstimate = ((try? container.decodeIfPresent(Bool.self, forKey: .isEstimate)) ?? nil) ?? false
     }
+
+    /// Leaves out what's unset, so a food without a weight, source or estimate encodes exactly as build 25 does.
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(brand, forKey: .brand)
+        try container.encode(servingSize, forKey: .servingSize)
+        try container.encode(nutrients, forKey: .nutrients)
+        try container.encode(servings, forKey: .servings)
+        try container.encodeIfPresent(gramsPerServing, forKey: .gramsPerServing)
+        try container.encodeIfPresent(weightUnit, forKey: .weightUnit)
+        try container.encodeIfPresent(source, forKey: .source)
+        if isEstimate { try container.encode(true, forKey: .isEstimate) }
+    }
+}
+
+/// Where a looked-up food's nutrition was published, kept with the food when it's logged or put in a recipe, so
+/// it can be checked later. The values are a copy: a later change to the page doesn't change what was logged.
+struct NutritionSource: Hashable, Codable {
+    /// The page or document the values come from, such as "Full Nutrition Facts".
+    var title: String
+    var url: URL
+    /// When the values were fetched, which may be earlier than when they were logged if they came from the cache.
+    var retrieved: Date
+    /// The country the values are published for, as a region code such as "US", if known.
+    var market: String?
+    /// What the published values are for, as the source says it, such as "4 oz" or "1 burrito (520 g)".
+    var servingBasis: String
+    /// The website it's from, such as "chipotle.com".
+    var provider: String
 }
 
 /// Reads a serving's weight from how it's written on a label, such as "1 bar (30 g)".

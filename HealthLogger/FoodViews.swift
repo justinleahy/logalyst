@@ -500,6 +500,19 @@ struct LogFoodView: View {
                 }
             }
             NutritionTotals(portions: [portion])
+            if let source = portion.source {
+                Section {
+                    SourceRow(source: source)
+                } header: {
+                    Text("Source")
+                } footer: {
+                    Text("Logged as published when it was looked up; a later change to the source doesn't change it.")
+                }
+            } else if portion.isEstimate {
+                Section {
+                    Label("Estimated by Apple Intelligence from a photo", systemImage: "sparkles")
+                }
+            }
             MealAndTimeSection(meal: $meal, mealChosen: $mealChosen, date: $date)
         }
         .scrollDismissesKeyboard(.interactively)
@@ -592,11 +605,19 @@ struct LogMealView: View {
     var note: String?
     /// Called after saving; pops this screen when nil.
     var onSaved: (() -> Void)?
+    /// For a meal from a photo with a restaurant or brand: why its lookup failed, if it did, and the brand's
+    /// published foods to add or replace foods with.
+    private var branded: BrandedMeal?
+    /// Looks the brand's nutrition up again after a failure.
+    private var onRetryLookup: (() -> Void)?
 
     @Environment(HealthStore.self) private var health
     @Environment(\.dismiss) private var dismiss
     @Query private var savedFoods: [Food]
     @State private var portions: [FoodPortion]
+    /// What to ask about foods from a branded photo: which published food it is, or whether a food that may be
+    /// hidden was there. A food waiting for an answer stays at zero, so it isn't logged.
+    @State private var reviews: [FoodPortion.ID: ItemReview] = [:]
     @State private var meal: Meal
     @State private var mealChosen: Bool
     @State private var date: Date
@@ -625,27 +646,52 @@ struct LogMealView: View {
         _mealChosen = State(initialValue: meal != nil)
     }
 
+    /// A meal from a photo with a restaurant or brand, its foods matched to the brand's published nutrition.
+    init(branded meal: BrandedMeal, date: Date?, onRetryLookup: (() -> Void)?, onSaved: (() -> Void)? = nil) {
+        let estimates = meal.failure != nil || meal.published.isEmpty
+        self.init(title: "\(meal.brand) Meal", portions: meal.portions, date: date,
+                  note: estimates ? "Estimated from your photo. Check each food and amount before logging."
+                      : "Foods marked Published use \(meal.brand)'s nutrition; the rest are estimates. Amounts come "
+                        + "from your photo and details, so check them before logging.",
+                  onSaved: onSaved)
+        branded = meal
+        self.onRetryLookup = onRetryLookup
+        _reviews = State(initialValue: meal.reviews)
+    }
+
     var body: some View {
         Form {
+            if let branded { lookupStatus(branded) }
             Section {
                 ForEach($portions) { $portion in
-                    PortionRow(portion: $portion, zeroText: "Left out")
-                        .swipeActions {
-                            Button("Replace", systemImage: "arrow.left.arrow.right") { replace(portion) }
-                                .tint(.indigo)
+                    VStack(alignment: .leading, spacing: 6) {
+                        PortionRow(portion: $portion, zeroText: zeroText(for: portion))
+                        if let review = reviews[portion.id] {
+                            ReviewPrompt(portion: portion, review: review, brand: branded?.brand ?? "",
+                                         onChoose: { choose($0, for: portion) },
+                                         onUseEstimate: { useEstimate(for: portion) },
+                                         onInclude: { include(portion) })
                         }
-                        .contextMenu {
-                            Button("Replace \(portion.name)", systemImage: "arrow.left.arrow.right") { replace(portion) }
-                        }
+                    }
+                    .swipeActions {
+                        Button("Replace", systemImage: "arrow.left.arrow.right") { replace(portion) }
+                            .tint(.indigo)
+                    }
+                    .contextMenu {
+                        Button("Replace \(portion.name)", systemImage: "arrow.left.arrow.right") { replace(portion) }
+                    }
                 }
                 Button("Add Food", systemImage: "plus.circle") { addingFood = true }
             } header: {
                 Text("Foods")
             } footer: {
-                Text([note, "Set a food to 0 to leave it out, or swipe left on it to replace it with one of your foods."]
+                Text([note, branded == nil
+                      ? "Set a food to 0 to leave it out, or swipe left on it to replace it with one of your foods."
+                      : "Set a food to 0 to leave it out, or swipe left on it to replace it."]
                     .compactMap { $0 }.joined(separator: " "))
             }
             NutritionTotals(portions: included)
+            sourcesSection
             MealAndTimeSection(meal: $meal, mealChosen: $mealChosen, date: $date)
             Section {
                 Button("Save as Recipe", systemImage: "book.closed") { savingRecipe = true }
@@ -663,7 +709,7 @@ struct LogMealView: View {
         }
         .sheet(isPresented: $addingFood) {
             NavigationStack {
-                FoodPicker(title: "Add Food", allowsMultiple: true) { picked in
+                MealFoodPicker(title: "Add Food", branded: branded, allowsMultiple: true) { picked in
                     portions += picked
                     addingFood = false
                 }
@@ -672,9 +718,10 @@ struct LogMealView: View {
         }
         .sheet(item: $replacing) { target in
             NavigationStack {
-                FoodPicker(title: "Replace \(target.name)") { picked in
+                MealFoodPicker(title: "Replace \(target.name)", branded: branded) { picked in
                     if let food = picked.first, let index = portions.firstIndex(where: { $0.id == target.id }) {
                         portions[index] = portions[index].replaced(by: food)
+                        reviews[target.id] = nil
                     }
                     replacing = nil
                 }
@@ -696,12 +743,106 @@ struct LogMealView: View {
         }
     }
 
+    /// Why the brand's nutrition couldn't be used, with a way to try again or check its own pages.
+    @ViewBuilder
+    private func lookupStatus(_ branded: BrandedMeal) -> some View {
+        if let failure = branded.failure {
+            Section {
+                Label {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Couldn't Look Up \(branded.brand)").font(.headline)
+                        Text(failure.localizedDescription).font(.subheadline).foregroundStyle(.secondary)
+                    }
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange)
+                }
+                if let onRetryLookup {
+                    Button("Try Again", systemImage: "arrow.clockwise", action: onRetryLookup)
+                }
+            } footer: {
+                Text("Until then, these are Apple Intelligence's estimates from your photo. You can also replace a "
+                     + "food with one of yours.")
+            }
+        } else if branded.published.isEmpty {
+            Section {
+                Label("\(branded.brand)'s published nutrition wasn't found, so these are Apple Intelligence's "
+                      + "estimates from your photo.", systemImage: "magnifyingglass")
+                ForEach(branded.pages, id: \.url) { page in
+                    Link(destination: page.url) { Label(page.title, systemImage: "safari") }
+                }
+            } footer: {
+                if !branded.pages.isEmpty {
+                    Text("To use \(branded.brand)'s own figures, check them there, then replace a food with a new "
+                         + "one of yours that has them.")
+                }
+            }
+        }
+    }
+
+    /// Where the counted foods' published values come from.
+    @ViewBuilder
+    private var sourcesSection: some View {
+        let sources = BrandedMeal.sources(of: included)
+        if !sources.isEmpty {
+            Section {
+                ForEach(sources, id: \.url) { SourceRow(source: $0, showsServing: false) }
+            } header: {
+                Text("Sources")
+            } footer: {
+                Text("Published values are for the serving shown with each food. "
+                     + (branded == nil ? "" : "The amounts come from your photo and details. ")
+                     + "Nutrients a source doesn't publish aren't counted.")
+            }
+        }
+    }
+
     private var included: [FoodPortion] {
         portions.filter { $0.servings > 0 }
     }
 
+    /// What a food at zero says: left out, or waiting for the prompt under it.
+    private func zeroText(for portion: FoodPortion) -> String {
+        guard let review = reviews[portion.id], !review.choices.isEmpty || review.needsConfirmation else {
+            return "Left out"
+        }
+        return "Not counted yet"
+    }
+
     private func replace(_ portion: FoodPortion) {
         replacing = Replacement(id: portion.id, name: portion.name)
+    }
+
+    /// Uses a published food the user picked for one that matched several, at the amount the photo suggested
+    /// (or the amount they've typed).
+    private func choose(_ choice: FoodPortion, for portion: FoodPortion) {
+        settle(portion, as: choice)
+    }
+
+    /// Uses the on-device estimate for a food no published one is right for.
+    private func useEstimate(for portion: FoodPortion) {
+        guard let review = reviews[portion.id] else { return }
+        settle(portion, as: review.estimate)
+    }
+
+    private func settle(_ portion: FoodPortion, as food: FoodPortion) {
+        guard let index = portions.firstIndex(where: { $0.id == portion.id }), let review = reviews[portion.id] else {
+            return
+        }
+        var settled = food
+        settled.id = UUID()
+        settled.servings = portion.servings > 0 ? portion.servings : review.suggestedServings
+        portions[index] = settled
+        reviews[portion.id] = nil
+        reviews[settled.id] = ItemReview(origin: review.origin, suggestedServings: review.suggestedServings,
+                                         estimate: review.estimate)
+    }
+
+    /// Counts a food that may have been hidden, at the amount suggested.
+    private func include(_ portion: FoodPortion) {
+        guard let index = portions.firstIndex(where: { $0.id == portion.id }),
+              let suggested = reviews[portion.id]?.suggestedServings else { return }
+        portions[index].servings = suggested
+        reviews[portion.id]?.needsConfirmation = false
     }
 
     private func save() {
@@ -718,6 +859,100 @@ struct LogMealView: View {
                 self.error = error.healthMessage
             }
         }
+    }
+}
+
+/// What to check about a food from a branded photo: which of the brand's foods it is, or whether a food that may
+/// be hidden was there, with where it came from.
+private struct ReviewPrompt: View {
+    let portion: FoodPortion
+    let review: ItemReview
+    let brand: String
+    let onChoose: (FoodPortion) -> Void
+    let onUseEstimate: () -> Void
+    let onInclude: () -> Void
+
+    var body: some View {
+        if let note {
+            Text(note).font(.caption).foregroundStyle(.secondary)
+        }
+        if !review.choices.isEmpty {
+            HStack {
+                Text(review.choices.count == 1 ? "Is it \(review.choices[0].name)?" : "Which is it?")
+                    .font(.caption.bold())
+                Spacer()
+                Menu {
+                    ForEach(review.choices) { choice in
+                        Button {
+                            onChoose(choice)
+                        } label: {
+                            Text(choice.name)
+                            Text(choice.choiceDetail)
+                        }
+                    }
+                    Divider()
+                    Button("Use the Estimate", systemImage: "sparkles", action: onUseEstimate)
+                } label: {
+                    Text("Choose")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .accessibilityLabel("Choose which \(portion.name)")
+            }
+        } else if review.needsConfirmation && portion.servings == 0 {
+            HStack {
+                Text("Was it there?").font(.caption.bold())
+                Spacer()
+                Button("Include", action: onInclude)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .accessibilityLabel("Include \(portion.name)")
+            }
+        }
+    }
+
+    private var note: String? {
+        if review.origin == .hidden && review.needsConfirmation {
+            return "Usually under the other foods, but not in your photo or details."
+        }
+        if review.origin == .details { return "From your details." }
+        if review.notFound && portion.isEstimate {
+            return "Not in \(brand)'s published nutrition, so this is an estimate."
+        }
+        return nil
+    }
+}
+
+extension FoodPortion {
+    /// "4 oz · 210 kcal", to tell published foods apart when choosing one.
+    var choiceDetail: String {
+        [servingSize, formatCalories(nutrients["dietaryEnergyConsumed"] ?? 0)].filter { !$0.isEmpty }
+            .joined(separator: " · ")
+    }
+}
+
+/// A published source: its title linking to it, its website, what its values are for, and when they were read.
+/// In a meal's list of sources, where several foods can share one document, each food shows its own serving
+/// instead.
+struct SourceRow: View {
+    let source: NutritionSource
+    var showsServing = true
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Link(destination: source.url) {
+                Label(source.title, systemImage: "link")
+            }
+            Text(detail).font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private var detail: String {
+        [source.provider.isEmpty ? nil : source.provider,
+         source.servingBasis.isEmpty || !showsServing ? nil : "Per \(source.servingBasis)",
+         source.market.flatMap { Locale.current.localizedString(forRegionCode: $0) },
+         "Read \(source.retrieved.formatted(date: .abbreviated, time: .omitted))"]
+            .compactMap { $0 }.joined(separator: " · ")
     }
 }
 
@@ -752,6 +987,7 @@ struct PortionRow: View {
             Text(portion.servings > 0 ? portion.summary : zeroText)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            NutritionBasisLabel(portion: portion)
         }
     }
 
@@ -778,6 +1014,28 @@ struct PortionRow: View {
 
     private var unitBinding: Binding<WeightUnit?> {
         Binding { portion.enteredWeightUnit } set: { portion.enter(in: $0) }
+    }
+}
+
+/// Whether a food's nutrition is published by a restaurant or brand (and for what serving) or an estimate from a
+/// photo. Nothing for a food's own label or a saved food.
+struct NutritionBasisLabel: View {
+    let portion: FoodPortion
+
+    var body: some View {
+        // Text rather than a Label, which a list row would space like its icon.
+        if let source = portion.source {
+            let text = source.servingBasis.isEmpty ? "Published" : "Published per \(source.servingBasis)"
+            Text("\(Image(systemName: "checkmark.seal")) \(text)")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel(text)
+        } else if portion.isEstimate {
+            Text("\(Image(systemName: "sparkles")) Estimate")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("Estimate")
+        }
     }
 }
 

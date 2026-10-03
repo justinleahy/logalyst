@@ -1,10 +1,11 @@
 # Roadmap implementation review
 
 Reviewed: October 3, 2026  
+Fixes validated: October 3, 2026, against implementation commit `70e903e`\
 Scope: `ROADMAP.md`, the corresponding implementation, and existing tests  
-Status: All seven implementation findings and the Open Food Facts attribution task fixed October 3, 2026; release validation remains incomplete
+Status: Not all findings are resolved. F2 and F4 remain partially resolved; F8 is newly identified and open. F1, F3, F5 and F6 are resolved for their original cases. F7's fix is source-verified; dedicated UI/iCloud validation remains outstanding. Release validation remains incomplete.
 
-The 1.1 features are broadly implemented. The review itself did not change implementation files; the fixes were made afterwards and are recorded under each finding (**Fixed:**) and in [Fix verification](#fix-verification). The release requirements below still need devices, App Store Connect or the CloudKit console, so they remain open.
+The reviewed 1.1 features are broadly implemented. C5 (restaurant and brand nutrition lookup for meal photos) was added to the roadmap after this review and implemented afterwards, on top of `70e903e`; this review doesn't cover it. The descriptions and initial evidence under F1–F7 document the original review; each finding's validation paragraph records its current disposition. Original source references may have shifted in the fix commit; references in the validation paragraphs and F8 refer to `70e903e`. Neither the review nor the subsequent validation changed implementation files. Fresh tests passed, but additional probes reproduced the remaining defects; see [Fix verification](#fix-verification).
 
 ## Implementation findings
 
@@ -24,7 +25,7 @@ Deleting the correction leaves the pending edit unchanged. `finishEdit` checks o
 
 **Suggested correction:** Revalidate the replacement before deleting the original, and reconcile pending operations when either entry is manually deleted.
 
-**Fixed:** `finishEdit` looks up the correction before deleting the original; if it's gone, the original is kept, the edit is dropped and `EditError.correctionMissing` is reported (the retry alert closes instead of offering Try Again). `delete(_:)` drops any pending edit whose original or correction was deleted. Tests: `deletingTheCorrectionKeepsTheOriginal`, `finishingAfterTheCorrectionIsDeletedElsewhereKeepsTheOriginal`, `deletingTheOriginalDropsTheEdit`.
+**Validated — original case resolved:** `finishEdit` looks up the correction before deleting the original; if it's gone, the original is kept, the edit is dropped and `EditError.correctionMissing` is reported (the retry alert closes instead of offering Try Again). `delete(_:)` drops any pending edit whose original or correction was deleted. The fresh simulator run passed `deletingTheCorrectionKeepsTheOriginal`, `finishingAfterTheCorrectionIsDeletedElsewhereKeepsTheOriginal` and `deletingTheOriginalDropsTheEdit`. Editing the correction again exposes a separate recovery defect, recorded as F8 below.
 
 ### F2 — Medium: Serving-weight parsing can produce incorrect nutrition
 
@@ -47,7 +48,20 @@ This violates C2's requirement that ambiguous weights must not silently produce 
 
 **Suggested correction:** Parse complete supported expressions, reject ambiguous expressions, and reconcile conflicting textual and structured weights. Add coverage for multipliers, ranges, fractional grams, and leading-decimal grams.
 
-**Fixed:** `ServingWeight.reading(of:)` reads each weight expression whole: fractions (`1/2 g` = 0.5 g, `1 1/2 g`) and leading decimals (`.5 g` = 0.5 g) are parsed, and multiples (`2 x 30 g`, `30 g x 2`, `2 biscuits x 15 g`), ranges (`20-30 g`, `20 to 30 g`) and zero are ambiguous, giving no weight. The barcode import uses the printed weight only when Open Food Facts' `serving_quantity` agrees (to 0.5 g or 1%), uses `serving_quantity` alone only when the text states no weight, and otherwise leaves the food servings-only. The finding's `2 x 30 g` / 60 g / 240 kcal product now imports with no weight. Tests: `multiplesAndRangesAreAmbiguous` (10 cases), new `readsAStatedGramWeight` cases, `aMultipleServingHasNoWeight`, `aPrintedWeightTheDatabaseDisagreesWithIsntUsed`, `aPrintedWeightTheDatabaseRoundsIsUsed`.
+**Validated — partially resolved:** The shared parser now handles the original direct fractional and leading-decimal inputs and rejects the original multiplier/range inputs. Barcode import checks agreement with the structured quantity; the original `2 x 30 g` / 60 g / 240 kcal product now safely imports without a serving weight. The new parser and barcode regression tests passed.
+
+The complete label-import path still produces incorrect nutrition, and some unsupported expressions still yield a partial weight:
+
+| Current input | Reproduced result | Required result |
+| --- | --- | --- |
+| Label: nutrition per 100 g, serving `1/2 g`, 400 kcal and 20 g protein | Serving weight 0.5 g, but 8 kcal and 0.4 g protein | 2 kcal and 0.1 g protein |
+| Label: nutrition per 100 g, serving `.5 g`, 400 kcal | Serving becomes 5 g with 20 kcal | Serving 0.5 g with 2 kcal |
+| Shared parser: `2 x (30 g)` or `30 g (x2)` | 30 g | Reject as ambiguous or interpret the complete expression |
+| Shared parser: `1 / 2 g` | 2 g | 0.5 g or reject as unsupported |
+
+**Remaining cause and evidence:** [NutritionLabel.amount at line 139](HealthLogger/NutritionLabel.swift#L139) still uses a separate regex that reads the denominator of `1/2 g` as 2 g for normalization, while [label application at line 49](HealthLogger/LabelScanner.swift#L49) assigns 0.5 g through the shared parser. [NutritionLabel.tidy at line 146](HealthLogger/NutritionLabel.swift#L146) strips the leading decimal point. The shared parser also accepts fragments of the expressions above. These results were reproduced by executing extracted production parsing and label-application code in a Swift probe; they are not OCR camera tests. Existing passing tests do not cover these full label cases.
+
+**Still needed:** Use consistent complete-expression parsing for label normalization and serving metadata, preserve numeric punctuation, and reject unsupported ambiguous expressions throughout the import path.
 
 ### F3 — Medium: Rescanning a label mixes different serving sizes
 
@@ -63,7 +77,7 @@ This is an existing label-editing weakness that also affects C2's weight calcula
 
 **Suggested correction:** Clear missing values, consistently rescale them when justified, or explicitly require review when the serving basis changes. Do not silently retain values from the old basis.
 
-**Fixed:** `FoodDraft.apply` replaces all nutrients when the scanned serving differs from the current one (different text and not the same gram weight), so a missed nutrient is left empty. A rescan of the same serving still keeps amounts it missed. Tests: `rescanningForADifferentServingClearsWhatItDoesntList` (the finding's 100 g → 50 g example), `rescanningTheSameServingKeepsWhatItDoesntList`.
+**Validated — resolved:** `FoodDraft.apply` replaces all nutrients when the scanned serving differs from the current one (different text and not the same gram weight), so a missed nutrient is left empty. A rescan of the same serving still keeps amounts it missed. Both regression tests passed: `rescanningForADifferentServingClearsWhatItDoesntList` and `rescanningTheSameServingKeepsWhatItDoesntList`. An additional probe of the production application code confirmed that the original 100 g → 50 g example clears fat, while the same-serving control preserves omitted nutrients.
 
 ### F4 — Medium: Shortcuts can log a different food record than the selection displays
 
@@ -77,7 +91,16 @@ With two **Oats / Quaker** records—a favorite containing **200 kcal** and a mo
 
 **Suggested correction:** Use identities that distinguish selectable records consistently, or explicitly resolve duplicates. Selection and execution must refer to the same record.
 
-**Fixed:** Entity IDs now add the record's creation time (in milliseconds; it syncs through iCloud) to the name and brand, so duplicate foods and duplicate recipes are each offered. `entities(for:)` and `perform()` resolve an ID through the same lookup and ordering: same name and brand, creation time closest and within a second (allowing for iCloud storing it less precisely). A renamed or deleted record still resolves to nothing. These intents were added after build 25, so no shipped shortcut used the old IDs. Tests: `duplicateFoodsAreEachOfferedAndLoggedAsThemselves` (the finding's two Oats / Quaker records), `duplicateRecipesAreEachOffered`, `anIDAMillisecondOffStillFindsItsFood`.
+**Validated — partially resolved:** IDs now include creation time rounded to milliseconds, and lookup selects the same-name/brand record whose creation time is closest to that timestamp within one second. The duplicate-food, duplicate-recipe and timestamp-tolerance regression tests passed, including the original widely separated duplicate-record case. This does not guarantee that selection and execution identify the same record.
+
+Two remaining cases were reproduced using extracted production identifier/matching code with record stubs:
+
+1. Two same-name/brand records created at `t + 0.0004 s` (favorite, 200 kcal) and `t + 0.0001 s` (nonfavorite, 100 kcal), with `t` on a whole-second boundary, round to the same ID. Query ordering retains the favorite for display, but lookup chooses the nonfavorite because its timestamp is closer to the rounded value. The displayed 200-kcal selection logs 100 kcal.
+2. A saved shortcut refers to a record created at `t`. If that record is deleted and a same-name/brand record created at `t + 0.5 s` remains, the old ID resolves to the remaining record rather than reporting that the selection is unavailable.
+
+**Current source:** [identifier at line 55](HealthLogger/FoodIntents.swift#L55), [matching at line 63](HealthLogger/FoodIntents.swift#L63), and [query deduplication at line 130](HealthLogger/FoodIntents.swift#L130). These probes did not exercise the AppIntents runtime or real CloudKit sync. The duplicate-record test uses records an hour apart; the deletion test leaves no nearby duplicate, so neither catches these cases.
+
+**Still needed:** Use a stable, immutable identifier for each record that syncs through iCloud, and do not substitute another record through fuzzy timestamp matching.
 
 ### F5 — Medium: “Log Last Meal Again” can log an incomplete meal
 
@@ -91,7 +114,7 @@ For example, 499 newer lunch entries followed by a two-food snack leave only one
 
 **Suggested correction:** Query the requested meal and fetch its complete selected day, or paginate until the full relevant meal is available.
 
-**Fixed:** `Recents.lastMeal(_:in: HealthStore)` reads Health one day at a time, from yesterday back to 30 days, with no entry limit (`recentEntries` gained `before:` and an optional limit), and stops at the first day with that meal, so the meal is always complete. Test: `theLastMealIsWholeAfterManyNewerEntries` (a two-food snack followed by 500 newer lunch entries).
+**Validated — original case resolved:** `Recents.lastMeal(_:in: HealthStore)` reads Health one day at a time within the lookback window, with no entry limit (`recentEntries` gained `before:` and an optional limit), and stops at the first day with that meal. The 500-entry cap no longer truncates or hides the selected meal. The fresh HealthKit simulator run passed `theLastMealIsWholeAfterManyNewerEntries`, covering a two-food snack followed by 500 newer lunch entries.
 
 ### F6 — Medium: Interrupted edits can lose their recovery controls
 
@@ -105,7 +128,7 @@ Both entries remain without the promised recovery controls while cleanup continu
 
 **Suggested correction:** Persist the discovered replacement state before retrying cleanup, and keep unresolved operations visible after a recovery failure.
 
-**Fixed:** Finishing an edit whose correction is found in Health records `replacementSaved = true` before trying the delete, so a failed cleanup on relaunch leaves the edit in History's unfinished-edit section, and it survives a further relaunch. Test: `anInterruptedEditWhoseCleanupFailsStaysListed` (interruption plus delete failure combined).
+**Validated — resolved:** Finishing an edit whose correction is found in Health records `replacementSaved = true` before trying the delete, so a failed cleanup on relaunch leaves the edit in History's unfinished-edit section, and it survives a further relaunch. The fresh HealthKit simulator run passed `anInterruptedEditWhoseCleanupFailsStaysListed`, covering the combined interruption and deletion failure, including visible and persisted recovery state.
 
 ### F7 — Low: Recents can retain stale serving-weight information
 
@@ -117,20 +140,36 @@ Recents are cached and reloaded when `health.changeCount` changes. Editing a sav
 
 **Suggested correction:** Refresh or recompute enriched Recents when the saved-food basis changes, including changes arriving through iCloud.
 
-**Fixed:** Add Food keeps the Health entries it loaded and works out recents from them again whenever any saved food's fields change (`onChange` of the saved foods' drafts, which `@Query` updates for local edits and iCloud changes alike), without reading Health again. Not covered by an automated test; verified by build and by the existing Add Food UI flows passing.
+**Validated — implementation source-verified:** Add Food keeps its raw Health entries and recomputes enriched Recents when the saved-food drafts change: [observer at line 122](HealthLogger/FoodViews.swift#L122), [recomputation at line 278](HealthLogger/FoodViews.swift#L278). The observed draft includes the relevant serving and nutrient fields, so source inspection supports the local-edit and incoming-query-update fix. There is no dedicated UI or two-device iCloud regression test. The successful build and general Add Food UI tests do not independently establish this refresh behavior at runtime.
+
+### F8 — Medium: Editing an unresolved correction can leave a permanent duplicate
+
+**Roadmap:** C3 — Edit logged food and shared edit recovery\
+**Status:** Open; newly identified during fix validation\
+**Source:** [replacement deletion at Shared/HealthStore.swift:677](Shared/HealthStore.swift#L677), [missing-correction handling at line 694](Shared/HealthStore.swift#L694), and [History editing at HealthLogger/HistoryView.swift:17](HealthLogger/HistoryView.swift#L17)\
+**Evidence:** Reproduced for manual completion and automatic relaunch reconciliation using extracted production recovery methods with a mocked Health sample backend and persistence. This was not a HealthKit or UI runtime test.
+
+1. Edit entry A (200 kcal) into B (400 kcal). Saving B succeeds, deletion of A fails, and the user chooses **Later**. A and B remain, with a pending A → B edit.
+2. Open B from History and successfully edit it into C (600 kcal). This deletes B through the replacement path, but leaves the older pending A → B operation unchanged.
+3. Finish the pending edit manually or let relaunch reconciliation finish it. B is missing, so the new missing-correction safeguard discards the pending operation while preserving A.
+
+The result is A + C: **800 kcal instead of the intended 600 kcal**, with no pending edit and no recovery controls. The original F1 safeguard prevents data loss, but it does not follow a correction that has itself been replaced. Existing regression tests do not cover this chained-edit sequence.
+
+**Suggested correction:** Track the successor correction when replacing an entry involved in a pending edit, or prevent further editing of that correction until the original cleanup is resolved. Cover both manual completion and relaunch recovery.
 
 ## Feature coverage
 
 | Roadmap scope | Review result |
 | --- | --- |
 | C1: Watch presets | Implemented; no additional definite defect found. Physical-device Crown validation remains open. |
-| C2: Weighed foods and recipe ingredients | Implemented; F2, F3 and F7 fixed. Optional encrypted weight storage, legacy decoding, shared scaling, recipe snapshots and Health metadata are present. |
-| C3: Logged-food editing and shared recovery | Implemented; F1 and F6 fixed. Food and non-food edits use the shared recovery path. |
+| C2: Weighed foods and recipe ingredients | Implemented; F2 remains partially resolved, F3 is resolved, and F7's fix is source-verified with dedicated UI/iCloud validation outstanding. Optional encrypted weight storage, legacy decoding, shared scaling, recipe snapshots and Health metadata are present. |
+| C3: Logged-food editing and shared recovery | Implemented; the original F1 and F6 cases are resolved, but F8 remains open. Food and non-food edits use the shared recovery path. |
 | C4: Meal composition and correction | Shared add, replace, adjust, exclude and Save as Recipe workflows are implemented; no additional definite defect found. Real-photo device validation remains open. |
-| Optional 1: Food Siri/Shortcuts | Implemented on iPhone; F4 and F5 fixed. |
+| C5: Restaurant and brand nutrition lookup for meal photos | Added to the 1.1 core and implemented after this review, so not reviewed here. The roadmap's 1.1 implementation status records its simulator validation and what remains. |
+| Optional 1: Food Siri/Shortcuts | Implemented on iPhone; F4 remains partially resolved and the original F5 case is resolved. |
 | Optional 2: Configurable nutrition widget | Still held; the existing widget remains fixed. |
 | Optional 3: Onboarding | Implemented; no additional definite defect found. |
-| Backlog | Online food search, Watch food re-logging, Watch today view, past-day food diary, goal adherence, entry notes and toothbrushing timer remain unimplemented, as planned. |
+| Backlog | Standalone food search by name, Watch food re-logging, Watch today view, past-day food diary, goal adherence, entry notes and toothbrushing timer remain unimplemented, as planned. |
 | 1.2 direction | Localization and iPad support remain unimplemented, as planned. |
 | Held/excluded proposals | Remain outside the committed implementation scope. Their absence is not a 1.1 implementation defect. |
 
@@ -146,23 +185,34 @@ These are separate from the implementation defects. The roadmap already records 
 
 The roadmap's separate Open Food Facts attribution/User-Agent cleanup was undone at review time: the request identified itself as `HealthLogger/1.0 (iOS)`, and the import screen lacked the planned licence link. This recorded an unmet roadmap task, not a new legal assessment.
 
-**Fixed:** the request now sends `Logalyst/<version> (support@logalyst.app)` ([HealthLogger/Food.swift](HealthLogger/Food.swift), `FoodDatabase.userAgent`), using the support address the privacy policy already publishes. The food editor's note on an imported food links to Open Food Facts and the Open Database License. [PRIVACY.md](PRIVACY.md) now lists the version and contact address among what is sent, and the [roadmap](ROADMAP.md) records the task as done. The website's privacy page is built from PRIVACY.md and has **not** been redeployed. The API v2 → v3 decision remains open, as the roadmap says.
+**Source changes verified; deployment unverified:** The request now sends `Logalyst/<version> (support@logalyst.app)` ([HealthLogger/Food.swift](HealthLogger/Food.swift), `FoodDatabase.userAgent`), using the support address the privacy policy already publishes. The food editor's note on an imported food links to Open Food Facts and the Open Database License. [PRIVACY.md](PRIVACY.md) now lists the version and contact address among what is sent, and the [roadmap](ROADMAP.md) records the task as done. The website's privacy page is built from PRIVACY.md; deployment of the updated page was not independently verified. The API v2 → v3 decision remains open, as the roadmap says.
 
-## Verification and limits
+## Original review evidence
 
-- Reviewed implementation and existing tests against the roadmap, using parallel reviews of C1/optional features, C2, and C3, plus review of meal composition and release requirements.
-- Ran `xcodebuild build-for-testing` for the `HealthLogger` scheme with a generic iOS Simulator destination, signing disabled, and build output under `/private/tmp`. The result was **TEST BUILD SUCCEEDED**, covering the iPhone app, Watch app, both widget extensions, and both test targets.
-- Read-only Swift probes reproduced F2 and F3. Read-only algorithm probes reproduced F4 and F5; these were not executions of AppIntents or HealthKit.
-- F1, F6 and F7 are source-traced findings, with their runtime verification limits stated above.
-- The full simulator UI and HealthKit suites were **not rerun**. The roadmap's earlier successful test runs were not treated as fresh execution evidence.
-- Existing tests do not cover the failure combinations and edge cases described in these findings.
-- Git status was clean at the end of the review. Creating this report is a subsequent, explicitly requested documentation change.
+The initial review covered the roadmap through parallel reviews of C1/optional features, C2 and C3, plus meal composition and release requirements. A generic iOS Simulator `build-for-testing` succeeded for the iPhone app, Watch app, both widget extensions and both test targets. Swift probes reproduced the original F2–F5 cases; F1, F6 and F7 were source-traced. That initial review did not rerun the simulator suites. The subsequent fix validation below supplies fresh execution evidence and supersedes the earlier claim that all seven findings were fixed.
 
 ## Fix verification
 
-- `xcodebuild build-for-testing` for the `HealthLogger` scheme (generic iOS Simulator): **TEST BUILD SUCCEEDED**, covering the iPhone app, Watch app, both widget extensions and both test targets.
-- `HealthLoggerTests` on the iPhone 18 Pro simulator (iOS 27.0, Health access allowed): **67 tests in 10 suites passed**, including every test named above. The HealthKit tests ran against the simulator's Health store.
-- `HealthLoggerUITests/FoodFlowUITests` on the same simulator: **8 passed, 1 skipped** (`testComposeAMealWherePhotoOfMealIsUnavailable`, which is for iOS 18–26), 0 failures. These cover the edit-recovery alert and History's Remove Original paths changed by F1 and F6.
-- The parser was also checked separately against the finding's inputs and 40 further serving texts.
-- Not rerun: the other UI test classes (accessibility, onboarding, Watch presets), which these fixes don't touch.
-- F7 has no automated test. F4's iCloud tolerance is covered by a unit test, not by a real two-device sync.
+Independent validation on October 3, 2026, used implementation commit `70e903e` and the iPhone 18 Pro simulator running iOS 27.0 (build `24A434`).
+
+- Fresh `HealthLoggerTests`: **67 passed**, including the parser/import, Shortcuts, edit-recovery and last-meal regression tests. HealthKit tests used the simulator's Health store.
+- Fresh `HealthLoggerUITests/FoodFlowUITests`: **8 passed, 1 expected skip, 0 failures**. The skipped `testComposeAMealWherePhotoOfMealIsUnavailable` applies to iOS 18–26. The passing flows exercise recovery UI, but do not cover F8 or establish F7's local/iCloud refresh behavior.
+- Combined result: **75 passed, 1 skipped, 0 failures**, with `xcodebuild` exit status 0. Passing existing tests does not resolve the uncovered F2, F4 and F8 cases.
+- Additional Swift probes executed extracted production parsing/application code for F2 and F3, identifier/matching code with record stubs for F4, and recovery methods with a mocked Health backend and persistence for F8. These reproduced the remaining F2/F4 defects, confirmed F3's original fix, and reproduced F8 through both manual and automatic recovery.
+- Not rerun: the accessibility, onboarding and Watch-preset UI test classes. Physical-device checks, two-device iCloud behavior, CloudKit production deployment and website deployment remain unverified. F7 has no dedicated runtime regression test.
+- Validation did not edit implementation files. This report update is the requested documentation change.
+
+Command used for the successful fresh run, from `Logalyst-iOS`:
+
+```sh
+xcodebuild test -quiet -project HealthLogger.xcodeproj -scheme HealthLogger \
+  -destination 'platform=iOS Simulator,id=9BFEEEB3-FD9C-4B38-A598-D6327ECF7587' \
+  -derivedDataPath /private/tmp/logalyst-findings-validation-derived \
+  -resultBundlePath /private/tmp/logalyst-findings-validation-signed-20261003.xcresult \
+  -parallel-testing-enabled NO \
+  -only-testing:HealthLoggerTests \
+  -only-testing:HealthLoggerUITests/FoodFlowUITests \
+  CODE_SIGN_IDENTITY=-
+```
+
+The result bundle is `/private/tmp/logalyst-findings-validation-signed-20261003.xcresult`; the captured log is `/private/tmp/logalyst-findings-validation-signed-20261003.log`. These are temporary local validation artifacts, not committed test fixtures.

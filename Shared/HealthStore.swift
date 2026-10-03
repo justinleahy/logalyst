@@ -86,6 +86,14 @@ final class HealthStore {
     private static let gramsPerServingMetadataKey = "HealthLoggerGramsPerServing"
     /// "g" or "oz" when the amount was entered by weight.
     private static let weightUnitMetadataKey = "HealthLoggerWeightUnit"
+    /// From 1.1: true when the nutrition is an estimate from a photo, and where published nutrition came from.
+    private static let estimatedMetadataKey = "HealthLoggerEstimated"
+    private static let sourceTitleMetadataKey = "HealthLoggerSourceTitle"
+    private static let sourceURLMetadataKey = "HealthLoggerSourceURL"
+    private static let sourceRetrievedMetadataKey = "HealthLoggerSourceRetrieved"
+    private static let sourceMarketMetadataKey = "HealthLoggerSourceMarket"
+    private static let sourceServingMetadataKey = "HealthLoggerSourceServing"
+    private static let sourceProviderMetadataKey = "HealthLoggerSourceProvider"
 
     let isAvailable = HKHealthStore.isHealthDataAvailable()
     private(set) var preferredUnits: [HKQuantityType: HKUnit] = [:]
@@ -433,8 +441,29 @@ final class HealthStore {
             metadata[Self.gramsPerServingMetadataKey] = grams
             if let unit = food.enteredWeightUnit { metadata[Self.weightUnitMetadataKey] = unit.rawValue }
         }
+        if food.isEstimate { metadata[Self.estimatedMetadataKey] = true }
+        if let source = food.source {
+            metadata[Self.sourceTitleMetadataKey] = source.title
+            metadata[Self.sourceURLMetadataKey] = source.url.absoluteString
+            metadata[Self.sourceRetrievedMetadataKey] = source.retrieved
+            metadata[Self.sourceServingMetadataKey] = source.servingBasis
+            metadata[Self.sourceProviderMetadataKey] = source.provider
+            if let market = source.market { metadata[Self.sourceMarketMetadataKey] = market }
+        }
         return HKCorrelation(type: HKCorrelationType(.food), start: date, end: date,
                              objects: Set(samples), metadata: metadata)
+    }
+
+    /// Where a food entry's nutrition was published, or nil for one that wasn't looked up (including every entry
+    /// saved before 1.1).
+    private static func source(in metadata: [String: Any]) -> NutritionSource? {
+        guard let title = metadata[sourceTitleMetadataKey] as? String,
+              let url = (metadata[sourceURLMetadataKey] as? String).flatMap(URL.init(string:)),
+              let retrieved = metadata[sourceRetrievedMetadataKey] as? Date else { return nil }
+        return NutritionSource(title: title, url: url, retrieved: retrieved,
+                               market: metadata[sourceMarketMetadataKey] as? String,
+                               servingBasis: metadata[sourceServingMetadataKey] as? String ?? "",
+                               provider: metadata[sourceProviderMetadataKey] as? String ?? "")
     }
 
     // MARK: Reading
@@ -586,7 +615,9 @@ final class HealthStore {
             nutrients: servings > 0 ? totals.mapValues { $0 / servings } : totals, servings: servings > 0 ? servings : 1,
             gramsPerServing: gramsPerServing,
             weightUnit: gramsPerServing == nil ? nil
-                : (metadata[Self.weightUnitMetadataKey] as? String).flatMap(WeightUnit.init(rawValue:)))
+                : (metadata[Self.weightUnitMetadataKey] as? String).flatMap(WeightUnit.init(rawValue:)),
+            source: Self.source(in: metadata),
+            isEstimate: (metadata[Self.estimatedMetadataKey] as? NSNumber)?.boolValue ?? false)
         let meal = (metadata[Self.mealMetadataKey] as? String).flatMap(Meal.init(rawValue:)) ?? Meal(at: food.startDate)
         let text = totals["dietaryEnergyConsumed"].map { "\($0.formatted(.number.precision(.fractionLength(0)))) kcal" }
             ?? "Logged"

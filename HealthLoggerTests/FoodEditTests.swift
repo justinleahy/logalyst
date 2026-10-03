@@ -365,3 +365,93 @@ final class FoodEditTests {
         for entry in after { try await health.delete(entry) }
     }
 }
+
+/// C5's source and estimate context in Health, against the simulator's real Health store. Needs Health access, as
+/// for `FoodEditTests`.
+@MainActor
+@Suite(.serialized)
+final class PublishedFoodHealthTests {
+    private let raw = HKHealthStore()
+    private let defaults: UserDefaults
+    private let suiteName = "PublishedFoodHealthTests-\(UUID().uuidString)"
+    private var health: HealthStore
+    private let name = "Test Chicken \(UUID().uuidString.prefix(8))"
+    private let start = Date.now.addingTimeInterval(-3 * 3600)
+
+    init() throws {
+        defaults = UserDefaults(suiteName: suiteName)!
+        health = HealthStore(syncs: false, editDefaults: defaults)
+        let status = raw.authorizationStatus(for: HKQuantityType(.dietaryEnergyConsumed))
+        try #require(status == .sharingAuthorized, "Open Logalyst in this simulator and allow Health access first.")
+    }
+
+    deinit {
+        UserDefaults.standard.removePersistentDomain(forName: suiteName)
+    }
+
+    /// Chipotle's published chicken, per 4 oz.
+    private var chicken: FoodPortion {
+        FoodPortion(name: name, brand: "Chipotle", servingSize: "4 oz",
+                    nutrients: ["dietaryEnergyConsumed": 180, "dietaryFatTotal": 7, "dietaryFatSaturated": 3,
+                                "dietaryCholesterol": 125, "dietarySodium": 310, "dietaryProtein": 32],
+                    gramsPerServing: 113,
+                    source: NutritionSource(title: "Full Nutrition Facts",
+                                            url: URL(string: "https://www.chipotle.com/content/dam/chipotle/menu/nutrition/US-Nutrition-Facts-Paper-Menu-3-2025.pdf")!,
+                                            retrieved: Date(timeIntervalSince1970: 1_791_000_000), market: "US",
+                                            servingBasis: "4 oz", provider: "chipotle.com"))
+    }
+
+    private func entries() async throws -> [LoggedEntry] {
+        try await health.recentEntries(of: [], since: start).filter { $0.title == name }
+    }
+
+    private func cleanUp() async throws {
+        for entry in try await entries() { try await health.delete(entry) }
+    }
+
+    /// Ready when: a confirmed double portion scales each published nutrient exactly twice, and re-logged meals
+    /// retain their reviewed values and source context.
+    @Test func aDoublePublishedPortionKeepsItsSourceInHealth() async throws {
+        var double = chicken
+        double.servings = 2
+        try await health.saveFoods([double], meal: .lunch, date: start)
+        let food = try #require(try await entries().first?.food)
+        #expect(food.servings == 2)
+        #expect(food.source == chicken.source)
+        #expect(!food.isEstimate)
+        for (id, value) in chicken.nutrients {
+            #expect(abs(food.amount(of: id) - value * 2) < 1e-9, "\(id)")
+        }
+
+        // Logged again, as Recents and Log Again do, it keeps the same values and source.
+        try await health.saveFoods([food], meal: .lunch, date: start.addingTimeInterval(60))
+        let again = try await entries()
+        #expect(again.count == 2)
+        #expect(again.allSatisfy { $0.food?.source == chicken.source && $0.food?.nutrients == food.nutrients })
+        try await cleanUp()
+    }
+
+    @Test func anEstimateIsMarkedAsOne() async throws {
+        let estimate = FoodPortion(name: name, servingSize: "1 serving", nutrients: ["dietaryEnergyConsumed": 250],
+                                   isEstimate: true)
+        try await health.saveFoods([estimate], meal: .dinner, date: start)
+        let food = try #require(try await entries().first?.food)
+        #expect(food.isEstimate)
+        #expect(food.source == nil)
+        try await cleanUp()
+    }
+
+    /// Editing a looked-up food (C3) keeps its source.
+    @Test func editingKeepsTheSource() async throws {
+        try await health.saveFoods([chicken], meal: .lunch, date: start)
+        let entry = try #require(try await entries().first)
+        var corrected = try #require(entry.food)
+        corrected.servings = 1.5
+        try await health.saveFoods([corrected], meal: .lunch, date: entry.date, replacing: entry)
+        let edited = try await entries()
+        #expect(edited.count == 1)
+        #expect(edited.first?.food?.servings == 1.5)
+        #expect(edited.first?.food?.source == chicken.source)
+        try await cleanUp()
+    }
+}

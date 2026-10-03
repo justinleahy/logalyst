@@ -250,6 +250,199 @@ final class FoodFlowUITests: XCTestCase {
         XCTAssertTrue(recipe.label.contains("2 ingredients · 447 kcal per serving"), recipe.label)
     }
 
+    // MARK: C5: restaurant and brand lookup
+
+    // These use Debug stubs: `-StubMealPhoto` finds a Chipotle bowl in any photo (double chicken, rice that may be
+    // hidden, black beans, guacamole from the description and a lime wedge), and `-StubNutritionLookup` answers
+    // as a brand's website would, with test data.
+
+    /// Ready when: a meal photo with the brand supplied produces editable matches grounded in retrieved nutrition;
+    /// a double portion is exactly twice each published value; hidden and ambiguous foods are corrected before
+    /// logging; each published result links to its source; and the logged food keeps it.
+    func testLookUpABrandedMealPhoto() throws {
+        launch(["-StubMealPhoto", "YES", "-StubNutritionLookup", "ok"])
+        openPhotoOfMeal()
+        enterBrand("Chipotle", details: "double chicken, guac")
+        let footer = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Logalyst finds the nutrition Chipotle publishes'"))
+        XCTAssertTrue(footer.firstMatch.exists)
+        XCTAssertTrue(footer.firstMatch.label.contains("Your photo, details and foods stay on your iPhone."))
+        attachScreenshot("Brand and details")
+        app.buttons["Look Up Nutrition"].tap()
+        XCTAssertTrue(app.navigationBars["Chipotle Meal"].waitForExistence(timeout: 10))
+
+        // Published values, scaled by the portions from the photo and description.
+        XCTAssertTrue(app.staticTexts["Chipotle · 2 × 4 oz · 360 kcal"].exists, "Double chicken is 2 × 180 kcal.")
+        XCTAssertTrue(app.staticTexts["Chipotle · 4 oz · 130 kcal"].exists)
+        XCTAssertTrue(app.staticTexts["Chipotle · 4 oz · 230 kcal"].exists, "Guac matches Guacamole.")
+        XCTAssertTrue(app.staticTexts["From your details."].exists)
+        XCTAssertTrue(app.staticTexts["Not in Chipotle's published nutrition, so this is an estimate."].exists)
+        // Rice could be white or brown, and may be under the toppings: not counted until chosen.
+        XCTAssertTrue(app.staticTexts["Not counted yet"].exists)
+        XCTAssertTrue(app.staticTexts["Which is it?"].exists)
+        attachScreenshot("Branded meal to review")
+        scrollUntilExists(app.staticTexts["722 kcal"])  // 360 + 130 + 230 + 2, without the rice.
+
+        let choose = app.buttons["Choose which Rice"]
+        scrollBackUntilHittable(choose)
+        choose.tap()
+        let white = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'White Rice'")).firstMatch
+        XCTAssertTrue(white.waitForExistence(timeout: 3))
+        white.tap()
+        XCTAssertTrue(app.staticTexts["Chipotle · 4 oz · 210 kcal"].waitForExistence(timeout: 3))
+        scrollUntilExists(app.staticTexts["932 kcal"])
+
+        // Each published food's source is linked, with its serving and date.
+        let source = app.links.matching(NSPredicate(format: "label CONTAINS 'Chipotle nutrition (test data)'")).firstMatch
+        scrollUntilExists(source)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'test data · Read'")).firstMatch.exists)
+        attachScreenshot("Sources")
+
+        app.navigationBars["Chipotle Meal"].buttons["Log"].tap()
+        XCTAssertFalse(app.navigationBars["Chipotle Meal"].waitForExistence(timeout: 2))
+
+        // The logged chicken keeps its published values and source.
+        tab("History")
+        let chicken = entry("Chicken")
+        XCTAssertTrue(chicken.waitForExistence(timeout: 5))
+        XCTAssertTrue(chicken.label.contains("360 kcal"), chicken.label)
+        chicken.tap()
+        XCTAssertTrue(app.navigationBars["Chicken"].waitForExistence(timeout: 3))
+        let logged = app.links.matching(NSPredicate(format: "label CONTAINS 'Chipotle nutrition (test data)'")).firstMatch
+        scrollUntilExists(logged)
+        attachScreenshot("Logged food's source")
+    }
+
+    /// Ready when: offline, rate-limit and other lookup failures offer a usable fallback: labeled on-device
+    /// estimates, a retry, and correction, never a claim that estimates were verified online.
+    func testABrandedLookupThatFailsFallsBackToEstimates() throws {
+        launch(["-StubMealPhoto", "YES", "-StubNutritionLookup", "offline"])
+        openPhotoOfMeal()
+        enterBrand("Chipotle", details: "")
+        app.buttons["Look Up Nutrition"].tap()
+        XCTAssertTrue(app.navigationBars["Chipotle Meal"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Couldn't Look Up Chipotle"].exists)
+        XCTAssertTrue(app.staticTexts["You're offline. Connect to the internet and try again."].exists)
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Published'")).firstMatch.exists)
+        XCTAssertGreaterThanOrEqual(app.staticTexts.matching(identifier: "Estimate").count, 4)
+        attachScreenshot("Lookup failed")
+
+        // The rice that may be hidden waits to be confirmed even so.
+        XCTAssertTrue(app.staticTexts["Not counted yet"].exists)
+        XCTAssertTrue(app.staticTexts["Was it there?"].exists)
+        app.buttons["Include Rice"].tap()
+        XCTAssertFalse(app.staticTexts["Not counted yet"].exists)
+
+        // Trying again comes back to the meal screen with the same answer.
+        app.buttons["Try Again"].tap()
+        XCTAssertTrue(app.navigationBars["Chipotle Meal"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Couldn't Look Up Chipotle"].exists)
+    }
+
+    /// Ready when: a photo without a brand still works on the device, with nothing sent.
+    func testAMealPhotoWithoutABrandStaysOnTheDevice() throws {
+        launch(["-StubMealPhoto", "YES", "-StubNutritionLookup", "ok"])
+        openPhotoOfMeal()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'nothing is sent anywhere'")).firstMatch.exists)
+        XCTAssertFalse(app.buttons["Look Up Nutrition"].exists)
+        app.buttons["Estimate Nutrition"].tap()
+        XCTAssertTrue(app.navigationBars["Meal from Photo"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Banana"].exists)
+        XCTAssertGreaterThanOrEqual(app.staticTexts.matching(identifier: "Estimate").count, 2)
+        XCTAssertFalse(app.staticTexts["Sources"].exists)
+    }
+
+    /// Ready when: an unmatched food can be replaced with one of the brand's published foods, found by an
+    /// explicit search rather than while typing.
+    func testReplaceAFoodWithAPublishedOne() throws {
+        launch(["-StubMealPhoto", "YES", "-StubNutritionLookup", "ok"])
+        openPhotoOfMeal()
+        enterBrand("Chipotle", details: "")
+        app.buttons["Look Up Nutrition"].tap()
+        XCTAssertTrue(app.navigationBars["Chipotle Meal"].waitForExistence(timeout: 10))
+
+        portion("Lime Wedge").swipeLeft()
+        app.buttons["Replace"].tap()
+        XCTAssertTrue(app.navigationBars["Replace Lime Wedge"].waitForExistence(timeout: 3))
+        // The foods the meal's lookup found are offered first, filtered as you type; Sofritas needs a search.
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Chicken'")).firstMatch.exists)
+        let search = app.searchFields["Search Chipotle"]
+        search.tap()
+        app.typeText("sofritas")
+        let sofritas = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Sofritas'")).firstMatch
+        XCTAssertFalse(sofritas.exists)
+        XCTAssertFalse(app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Chicken'")).firstMatch.exists)
+        app.typeText("\n")
+        XCTAssertTrue(sofritas.waitForExistence(timeout: 5))
+        attachScreenshot("Published food search")
+        sofritas.tap()
+        XCTAssertTrue(app.navigationBars["Chipotle Meal"].waitForExistence(timeout: 3))
+        XCTAssertTrue(portion("Sofritas").exists)
+        XCTAssertFalse(portion("Lime Wedge").exists)
+    }
+
+    /// Live: the real lookup, reading chipotle.com (needs the internet), with only the photo stubbed. Skipped unless
+    /// run with `TEST_RUNNER_LIVE_LOOKUP=1`, so the usual runs don't depend on a website. `TEST_RUNNER_LIVE_BRAND`
+    /// and `TEST_RUNNER_LIVE_SEARCH` also search a second brand's foods through the same path.
+    func testLiveBrandLookup() throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["LIVE_LOOKUP"] == "1" else {
+            throw XCTSkip("Reads brands' websites; run with TEST_RUNNER_LIVE_LOOKUP=1.")
+        }
+        launch(["-StubMealPhoto", "YES"])
+        openPhotoOfMeal()
+        enterBrand("Chipotle", details: "")
+        app.buttons["Look Up Nutrition"].tap()
+        XCTAssertTrue(app.navigationBars["Chipotle Meal"].waitForExistence(timeout: 120))
+        attachScreenshot("Live Chipotle meal")
+        // Chipotle's published chicken is 180 kcal per 4 oz, so double is 360; black beans are 130.
+        XCTAssertTrue(app.staticTexts["Chipotle · 2 × 4 oz · 360 kcal"].exists, app.debugDescription)
+        XCTAssertTrue(app.staticTexts["Chipotle · 4 oz · 130 kcal"].exists)
+        let sources = app.staticTexts["Sources"]
+        scrollUntilExists(sources)
+        attachScreenshot("Live Chipotle sources")
+
+        guard let brand = environment["LIVE_BRAND"], let search = environment["LIVE_SEARCH"] else { return }
+        app.navigationBars["Chipotle Meal"].buttons.element(boundBy: 0).tap()
+        let field = app.textFields["Restaurant or Brand"]
+        XCTAssertTrue(field.waitForExistence(timeout: 3))
+        replaceText(in: field, with: brand)
+        app.buttons["Look Up Nutrition"].tap()
+        XCTAssertTrue(app.navigationBars["\(brand) Meal"].waitForExistence(timeout: 120))
+        attachScreenshot("Live \(brand) meal")
+        hittableButton("Add Food").tap()
+        let searchField = app.searchFields["Search \(brand)"]
+        XCTAssertTrue(searchField.waitForExistence(timeout: 5))
+        searchField.tap()
+        app.typeText(search + "\n")
+        let result = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@ AND label CONTAINS 'kcal'", search)).firstMatch
+        XCTAssertTrue(result.waitForExistence(timeout: 120), "Nothing found for \(search) at \(brand)")
+        attachScreenshot("Live \(brand) search")
+    }
+
+    private func openPhotoOfMeal() {
+        tab("Nutrition")
+        let button = app.buttons["Photo of Meal"].firstMatch
+        scrollUntilHittable(button)
+        button.tap()
+        XCTAssertTrue(app.navigationBars["Photo of Meal"].waitForExistence(timeout: 3))
+        app.buttons["Use Test Photo"].tap()
+        XCTAssertTrue(app.images["Your photo"].waitForExistence(timeout: 3))
+    }
+
+    private func enterBrand(_ brand: String, details: String) {
+        let field = app.textFields["Restaurant or Brand"]
+        XCTAssertTrue(field.waitForExistence(timeout: 3))
+        field.tap()
+        app.typeText(brand)
+        if !details.isEmpty {
+            let detailsField = app.descendants(matching: .any).matching(identifier: "Meal Details").firstMatch
+            XCTAssertTrue(detailsField.waitForExistence(timeout: 3))
+            detailsField.tap()
+            app.typeText(details)
+        }
+        XCTAssertTrue(app.buttons["Look Up Nutrition"].waitForExistence(timeout: 3))
+    }
+
     // MARK: Helpers
 
     private func launch(_ arguments: [String] = []) {
@@ -428,6 +621,16 @@ final class FoodFlowUITests: XCTestCase {
             tries += 1
         }
         XCTAssertTrue(element.exists, "Couldn't find \(element)")
+    }
+
+    /// Scrolls back up only until the element can be tapped, so a sheet isn't pulled down and closed.
+    private func scrollBackUntilHittable(_ element: XCUIElement) {
+        var tries = 0
+        while !(element.exists && element.isHittable) && tries < 10 {
+            app.swipeDown(velocity: .slow)
+            tries += 1
+        }
+        XCTAssertTrue(element.isHittable, "Couldn't reach \(element)")
     }
 
     private func scrollUntilHittable(_ element: XCUIElement) {

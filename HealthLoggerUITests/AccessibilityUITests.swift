@@ -74,6 +74,67 @@ final class AccessibilityUITests: XCTestCase {
         try audit("Meal screen, largest text")
     }
 
+    /// C5's screens, with the Debug stubs for the photo and the lookup: the photo with a brand, the branded meal
+    /// screen with its prompts and sources, and the brand's foods to pick from.
+    func testRestaurantLookupScreens() throws {
+        try auditLookupScreens(arguments: [])
+    }
+
+    func testRestaurantLookupScreensAtTheLargestTextSize() throws {
+        try auditLookupScreens(arguments: ["-UIPreferredContentSizeCategoryName",
+                                           "UICTContentSizeCategoryAccessibilityXXXL"],
+                               suffix: ", largest text")
+    }
+
+    func testFailedRestaurantLookup() throws {
+        app.launchArguments = ["-StubMealPhoto", "YES", "-StubNutritionLookup", "rateLimited"]
+        app.launch()
+        openPhotoOfMeal()
+        type("Chipotle", into: app.textFields["Restaurant or Brand"])
+        app.buttons["Look Up Nutrition"].tap()
+        XCTAssertTrue(app.navigationBars["Chipotle Meal"].waitForExistence(timeout: 10))
+        try audit("Failed restaurant lookup")
+    }
+
+    private func auditLookupScreens(arguments: [String], suffix: String = "") throws {
+        app.launchArguments = ["-StubMealPhoto", "YES", "-StubNutritionLookup", "ok"] + arguments
+        app.launch()
+        openPhotoOfMeal()
+        try audit("Photo of meal" + suffix)
+        type("Chipotle", into: app.textFields["Restaurant or Brand"])
+        try audit("Photo of meal with a brand" + suffix)
+        let lookUp = app.buttons["Look Up Nutrition"]
+        scrollUntilHittable(lookUp)
+        lookUp.tap()
+        XCTAssertTrue(app.navigationBars["Chipotle Meal"].waitForExistence(timeout: 10))
+        try audit("Branded meal" + suffix)
+        let sources = app.staticTexts["Sources"]
+        scrollUntilHittable(sources)
+        try audit("Branded meal sources" + suffix)
+
+        let replace = app.staticTexts["Lime Wedge"]
+        var tries = 0
+        while !replace.isHittable && tries < 20 {
+            app.swipeDown(velocity: .slow)
+            tries += 1
+        }
+        replace.swipeLeft()
+        app.buttons["Replace"].tap()
+        XCTAssertTrue(app.navigationBars["Replace Lime Wedge"].waitForExistence(timeout: 3))
+        try audit("Brand's foods to pick from" + suffix)
+    }
+
+    private func openPhotoOfMeal() {
+        app.tabBars.buttons["Nutrition"].tap()
+        let photo = app.buttons["Photo of Meal"].firstMatch
+        scrollUntilHittable(photo)
+        photo.tap()
+        let test = app.buttons["Use Test Photo"]
+        XCTAssertTrue(test.waitForExistence(timeout: 3))
+        scrollUntilHittable(test)
+        test.tap()
+    }
+
     private func auditFoodScreens() throws {
         let name = "Oats \(tag)"
         app.tabBars.buttons["Nutrition"].tap()
@@ -133,6 +194,12 @@ final class AccessibilityUITests: XCTestCase {
         "from Serving Size", "Serving Weight in grams", "With a serving weight", "One serving weighs", "Servings",
         "Grams", "Ounces", "Weight", "Grams of", "Servings of", "Ounces of", "Unit for", "Add Food", "Replace",
         "New Meal", "Next", "Add (", "Set a food to 0",
+        // C5
+        "Your photo", "Restaurant or Brand", "Meal Details", "Look Up Nutrition", "Estimate Nutrition",
+        "Choose Another", "Retake", "Stop", "Logalyst finds", "Add a restaurant", "Choose which", "Include ",
+        "Published", "Estimate", "Which is it", "Was it there", "From your details", "Not in ", "Usually under",
+        "Not counted", "Couldn't Look Up", "The website is busy", "Try Again", "Until then", "Sources",
+        "test data", "Search Chipotle", "Chipotle", "Foods marked",
     ]
 
     /// Audits a screen. Fails on missing descriptions, small hit areas, undetectable elements or wrong traits in an
