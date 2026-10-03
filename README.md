@@ -148,7 +148,7 @@ AppShortcuts/        Siri phrases, compiled into the iPhone and Watch apps
 Widgets/             Metric widget, Log Water and Log Metric controls, and widget helpers, compiled into both
                      widget extensions
 Shared/              Metric catalog, HealthStore (HealthKit read/write), NutritionGoals, DeviceSync
-                     (favorites and goals, Watch ↔ iPhone), app group settings, and the logging intents Siri, Shortcuts and
-                     widget buttons run, compiled into every target
+                     (favorites and goals, Watch ↔ iPhone), app group settings, and the logging intents Siri, Shortcuts,
+                     widget buttons and controls run, compiled into every target
 Config/              Entitlements and the widget extensions' Info.plists
 ```

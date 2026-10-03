@@ -37,6 +37,12 @@ struct WatchLogView: View {
         .onOpenURL { url in
             if case .log(let metric) = DeepLink(url: url) { path = [metric] }
         }
+        // So does the Log Metric control, through an intent.
+        .onChange(of: IntentNavigation.shared.link, initial: true) { _, link in
+            guard let link else { return }
+            if case .log(let metric) = link { path = [metric] }
+            IntentNavigation.shared.link = nil
+        }
     }
 
     private func row(for metric: Metric) -> some View {

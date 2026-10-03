@@ -19,27 +19,6 @@ struct LogWaterControl: ControlWidget {
     }
 }
 
-/// Opens the app to a metric's entry screen.
-struct OpenMetricIntent: AppIntent {
-    static let title: LocalizedStringResource = "Open Metric"
-    static let description = IntentDescription("Opens Logalyst to log a metric.")
-
-    @Parameter(title: "Metric")
-    var metric: MetricEntity?
-
-    init() {}
-
-    init(metric: MetricEntity?) {
-        self.metric = metric
-    }
-
-    @MainActor
-    func perform() async throws -> some IntentResult & OpensIntent {
-        let metric = metric.flatMap { Metric.metric(id: $0.id) } ?? .water
-        return .result(opensIntent: OpenURLIntent(DeepLink.log(metric).url))
-    }
-}
-
 @available(iOS 18.0, watchOS 26.0, *)
 struct LogMetricControlIntent: ControlConfigurationIntent {
     static let title: LocalizedStringResource = "Log Metric"

@@ -147,6 +147,33 @@ struct LogMetricIntent: AppIntent {
     }
 }
 
+/// Opens the app to a metric's entry screen, for the Log Metric control. It runs in the app, which is why it's
+/// compiled into the apps as well as the widget extensions: a control can't open the app to a custom URL scheme.
+struct OpenMetricIntent: AppIntent {
+    static let title: LocalizedStringResource = "Open Metric"
+    static let description = IntentDescription("Opens Logalyst to log a metric.")
+    static let openAppWhenRun = true
+
+    @available(iOS 26.0, watchOS 26.0, *)
+    static var supportedModes: IntentModes { .foreground }
+
+    @Parameter(title: "Metric")
+    var metric: MetricEntity?
+
+    init() {}
+
+    init(metric: MetricEntity?) {
+        self.metric = metric
+    }
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        let metric = metric.flatMap { Metric.metric(id: $0.id) } ?? .water
+        IntentNavigation.shared.link = .log(metric)
+        return .result()
+    }
+}
+
 /// The chosen metric's units, so Shortcuts offers "kg" and "lb" for weight rather than a text field.
 struct MetricUnitOptions: DynamicOptionsProvider {
     @IntentParameterDependency<LogMetricIntent>(\.$metric)

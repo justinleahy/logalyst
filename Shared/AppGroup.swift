@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 
 enum AppGroup {
     static let id = "group.com.justinleahy.HealthLogger"
@@ -43,4 +44,13 @@ enum DeepLink: Equatable {
             return nil
         }
     }
+}
+
+/// A screen an app intent asked to open, like the Log Metric control's. Intents run in the app but outside its
+/// views, so the views watch this and open it.
+@Observable
+final class IntentNavigation {
+    static let shared = IntentNavigation()
+
+    var link: DeepLink?
 }

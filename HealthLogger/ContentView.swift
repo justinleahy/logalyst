@@ -28,6 +28,11 @@ struct ContentView: View {
                     open(link.url)
                     reminders.openedLink = nil
                 }
+                .onChange(of: IntentNavigation.shared.link, initial: true) { _, link in
+                    guard let link else { return }
+                    open(link.url)
+                    IntentNavigation.shared.link = nil
+                }
                 // Units and entries logged here change the reminders' text and timing.
                 .onChange(of: health.changeCount) { reminders.reschedule() }
             } else {
@@ -49,7 +54,7 @@ struct ContentView: View {
         }
     }
 
-    /// Handles links from widgets and reminders.
+    /// Handles links from widgets, controls and reminders.
     private func open(_ url: URL) {
         switch DeepLink(url: url) {
         case .log(let metric):
