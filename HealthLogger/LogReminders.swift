@@ -203,10 +203,9 @@ struct LogReminder: Codable, Identifiable, Hashable {
         for offset in 0..<horizon where dates.count < limit {
             guard let day = calendar.date(byAdding: .day, value: offset, to: today), recurrence.includes(day) else { continue }
             if offset == 0 && stopsAtGoal && goalMet { continue }
-            let loggedToday = lastLog.map { calendar.isDate($0, inSameDayAs: day) } ?? false
             switch mode {
             case .times:
-                let times = times.sorted().compactMap { calendar.date(byAdding: .minute, value: $0, to: day) }
+                let times = times.sorted().compactMap { calendar.date(atMinute: $0, of: day) }
                 for (index, time) in times.enumerated() where time > now {
                     // A log answers the reminder it's closest to, so one made just after an earlier reminder
                     // doesn't also skip the next. The first of the day is answered by anything since midnight.
@@ -216,10 +215,12 @@ struct LogReminder: Codable, Identifiable, Hashable {
                     dates.append(time)
                 }
             case .notLogged:
-                guard let start = calendar.date(byAdding: .minute, value: startMinute, to: day),
-                      let end = calendar.date(byAdding: .minute, value: endMinute, to: day) else { continue }
+                guard let start = calendar.date(atMinute: startMinute, of: day),
+                      let end = calendar.date(atMinute: endMinute, of: day) else { continue }
                 let step = TimeInterval(intervalMinutes * 60)
-                let first = loggedToday ? max(start, lastLog!.addingTimeInterval(step)) : start
+                // Counts from the last log even if it was before midnight, so a late log still pushes back the
+                // first reminder of the next day.
+                let first = lastLog.map { max(start, $0.addingTimeInterval(step)) } ?? start
                 dates += stride(from: first, through: end, by: step).filter { $0 > now }
             }
         }
@@ -270,7 +271,15 @@ extension Metric {
 
 /// Today at a number of minutes after midnight, for reminder times.
 func todayAt(_ minute: Int) -> Date {
-    Calendar.current.date(byAdding: .minute, value: minute, to: Calendar.current.startOfDay(for: .now)) ?? .now
+    Calendar.current.date(atMinute: minute, of: .now) ?? .now
+}
+
+extension Calendar {
+    /// A day at a time of day given in minutes after midnight, read off the clock: on a day that daylight saving
+    /// time starts or ends, 9:00 AM is still 9:00 AM rather than 540 minutes after midnight.
+    func date(atMinute minute: Int, of day: Date) -> Date? {
+        date(bySettingHour: minute / 60, minute: minute % 60, second: 0, of: day)
+    }
 }
 
 /// Local reminders to log metrics, scheduled on the iPhone. iOS also shows them on the Watch while the phone is locked.
