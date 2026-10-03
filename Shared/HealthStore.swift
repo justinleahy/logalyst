@@ -95,7 +95,13 @@ final class HealthStore {
     private let store = HKHealthStore()
 
     private var writeTypes: Set<HKSampleType> {
-        Set(Metric.all.flatMap(\.sampleTypes))
+        // Blood pressure and food are saved and queried as correlations. Apple requires
+        // authorization for the correlation type as well as the quantity types it contains.
+        // Those quantities already come from Metric.sampleTypes; the correlation types do not.
+        Set(Metric.all.flatMap(\.sampleTypes)).union([
+            HKCorrelationType(.bloodPressure),
+            HKCorrelationType(.food),
+        ])
     }
 
     // MARK: Authorization
