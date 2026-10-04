@@ -81,6 +81,27 @@ extension View {
     func widgetTint() -> some View {
         tint(Color("AccentColor"))
     }
+
+    /// Hides a health reading, or progress that reveals one, while the system hides sensitive widget data: on a
+    /// locked iPhone or during Always On, as the user chose in Settings. Shows `placeholder` instead, such as the
+    /// metric's symbol, so the widget still says what it's for. Labels like the metric's name stay visible.
+    func healthPrivate(@ViewBuilder placeholder: () -> some View = { EmptyView() }) -> some View {
+        modifier(HealthPrivate(placeholder: placeholder()))
+    }
+}
+
+private struct HealthPrivate<Placeholder: View>: ViewModifier {
+    let placeholder: Placeholder
+    @Environment(\.redactionReasons) private var redactionReasons
+
+    func body(content: Content) -> some View {
+        if redactionReasons.contains(.privacy) {
+            placeholder
+        } else {
+            // Still marked, in case the system redacts without telling this view.
+            content.privacySensitive()
+        }
+    }
 }
 
 /// A widget's recorded total, which may be absent, partial, or last read before Health became unavailable.

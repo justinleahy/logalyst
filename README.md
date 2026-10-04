@@ -2,7 +2,8 @@
 
 An iPhone + Apple Watch app for manually logging health data that Apple Watch doesn't capture, written straight into Apple Health (HealthKit).
 
-See the [roadmap](ROADMAP.md) for the 1.1 release plan and later candidates.
+See the [roadmap](ROADMAP.md) for the 1.1 release plan and later candidates, and the
+[security review](SECURITY-REVIEW.md) for the current threat-model findings and remediation checklist.
 
 The first time it opens on an iPhone, Logalyst explains what it does and why it asks for Health access (asking
 only then), and offers to star favorites, review goals and set up reminders; every step can be skipped.

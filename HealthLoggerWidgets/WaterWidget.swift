@@ -72,6 +72,7 @@ struct WaterWidgetView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
                 WaterRing(progress: entry.progress, lineWidth: 6)
+                    .healthPrivate { WaterRing(progress: 0, lineWidth: 6) }
                     .frame(width: 44, height: 44)
                 amounts(font: .title3)
             }
@@ -86,6 +87,9 @@ struct WaterWidgetView: View {
                 .overlay {
                     Text(entry.progress, format: .percent.precision(.fractionLength(0)))
                         .font(.headline.monospacedDigit())
+                }
+                .healthPrivate {
+                    WaterRing(progress: 0, lineWidth: 10).overlay { Image(systemName: "drop.fill").font(.title2) }
                 }
                 .padding(4)
             VStack(alignment: .leading, spacing: 8) {
@@ -102,6 +106,7 @@ struct WaterWidgetView: View {
                 .font(font.bold().monospacedDigit())
                 .minimumScaleFactor(0.6)
                 .lineLimit(1)
+                .healthPrivate { Text("Water").font(font.bold()) }
             Text("of \(option.format(entry.goal))")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -133,6 +138,7 @@ struct WaterWidgetView: View {
             Text(option.formatNumber(entry.total)).minimumScaleFactor(0.5)
         }
         .gaugeStyle(.accessoryCircularCapacity)
+        .healthPrivate { Image(systemName: "drop.fill").font(.title3) }
     }
 
     private var rectangular: some View {
@@ -142,13 +148,15 @@ struct WaterWidgetView: View {
                 .widgetAccentable()
             Text("\(option.formatNumber(entry.total)) of \(option.format(entry.goal))")
                 .minimumScaleFactor(0.7)
-            ProgressView(value: min(entry.progress, 1))
+                .healthPrivate()
+            ProgressView(value: min(entry.progress, 1)).healthPrivate()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var inline: some View {
         Label("\(option.formatNumber(entry.total)) of \(option.format(entry.goal))", systemImage: "drop.fill")
+            .healthPrivate { Label("Water", systemImage: "drop.fill") }
     }
 }
 

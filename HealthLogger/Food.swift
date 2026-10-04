@@ -134,17 +134,28 @@ enum FoodDatabase {
         return "Logalyst/\(version) (support@logalyst.app)"
     }()
 
+    /// The longest product barcode (a GTIN-14); anything longer isn't a product number.
+    static let maxBarcodeLength = 14
+    /// A product response asks only for the fields above, so it's a few kilobytes; anything near this is wrong.
+    static let maxResponseBytes = 1_000_000
+
     /// A draft prefilled from the database, or nil if the product isn't listed.
     static func lookUp(barcode: String) async throws -> FoodDraft? {
-        guard !barcode.isEmpty, barcode.allSatisfy({ $0.isASCII && $0.isNumber }) else { return nil }
+        guard !barcode.isEmpty, barcode.count <= maxBarcodeLength, barcode.allSatisfy({ $0.isASCII && $0.isNumber })
+        else { return nil }
         var components = URLComponents(string: "https://world.openfoodfacts.org/api/v2/product/\(barcode).json")!
         components.queryItems = [URLQueryItem(name: "fields", value: "product_name,brands,serving_size,"
             + "serving_quantity,serving_quantity_unit,quantity,product_quantity_unit,nutriments")]
         var request = URLRequest(url: components.url!)
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
-        if (response as? HTTPURLResponse)?.statusCode == 404 { return nil }
+        let data: Data
+        do {
+            data = try await BoundedDownload.data(for: request, session: .shared, maxBytes: maxResponseBytes,
+                                                  accepts: BoundedDownload.isJSON)
+        } catch BoundedDownload.Failure.status(404) {
+            return nil
+        }
         return try draft(from: data, barcode: barcode)
     }
 

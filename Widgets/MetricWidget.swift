@@ -147,7 +147,10 @@ struct MetricWidgetView: View {
     var body: some View {
         switch family {
         case .accessoryCircular:
-            circular.accessibilityLabel("\(metric.name), \(entry.reading?.text ?? "No data available")")
+            // The reading is only read aloud where it's shown.
+            circular
+                .accessibilityLabel("\(metric.name), \(entry.reading?.text ?? "No data available")")
+                .healthPrivate { Image(systemName: metric.systemImage).font(.title3).accessibilityLabel(metric.name) }
         case .accessoryRectangular: rectangular
         case .accessoryInline: inline
         #if os(watchOS)
@@ -192,11 +195,14 @@ struct MetricWidgetView: View {
         Image(systemName: metric.systemImage)
             .font(.title2)
             .widgetLabel {
-                if let progress = entry.progress {
-                    Gauge(value: min(progress, 1)) { Text(value) }
-                } else {
-                    Text(entry.reading?.text ?? metric.name)
+                Group {
+                    if let progress = entry.progress {
+                        Gauge(value: min(progress, 1)) { Text(value) }
+                    } else {
+                        Text(entry.reading?.text ?? metric.name)
+                    }
                 }
+                .healthPrivate { Text(metric.name) }
             }
     }
     #endif
@@ -209,12 +215,14 @@ struct MetricWidgetView: View {
             Text(entry.reading?.text ?? "No data available")
                 .font(.system(.body, design: .rounded).weight(.semibold))
                 .minimumScaleFactor(0.6)
+                .healthPrivate()
             if let progress = entry.progress {
-                ProgressView(value: min(progress, 1))
+                ProgressView(value: min(progress, 1)).healthPrivate()
             } else {
                 ReadingTime(reading: entry.reading)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .healthPrivate()
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -222,6 +230,7 @@ struct MetricWidgetView: View {
 
     private var inline: some View {
         Label(entry.reading.map { "\(metric.name) \($0.text)" } ?? metric.name, systemImage: metric.systemImage)
+            .healthPrivate { Label(metric.name, systemImage: metric.systemImage) }
     }
 
     private var small: some View {
@@ -237,12 +246,14 @@ struct MetricWidgetView: View {
                 .font(.system(.title2, design: .rounded).weight(.semibold))
                 .minimumScaleFactor(0.5)
                 .lineLimit(1)
+                .healthPrivate()
             if let progress = entry.progress {
-                ProgressView(value: min(progress, 1))
+                ProgressView(value: min(progress, 1)).healthPrivate()
             } else {
                 ReadingTime(reading: entry.reading)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .healthPrivate()
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)

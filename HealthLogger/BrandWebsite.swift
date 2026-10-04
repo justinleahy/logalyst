@@ -1,7 +1,6 @@
 import Foundation
 import FoundationModels
 import MapKit
-import PDFKit
 import WebKit
 
 /// Finds a restaurant's or brand's published nutrition on its own website, from the iPhone. Apple Maps (or, for a
@@ -401,20 +400,23 @@ final class SiteReader: SiteReading {
 
     /// A small text file from the site, such as robots.txt or a sitemap.
     private func text(_ url: URL) async throws -> String {
-        let (data, response) = try await Self.session.data(from: url)
-        guard (response as? HTTPURLResponse)?.statusCode == 200, data.count <= Self.maxSitemapBytes,
-              let text = String(data: data, encoding: .utf8) else { throw LookupError.unavailable }
+        let data = try await BoundedDownload.data(for: URLRequest(url: url), session: Self.session,
+                                                  maxBytes: Self.maxSitemapBytes, accepts: BoundedDownload.isTextOrXML)
+        guard let text = String(data: data, encoding: .utf8) else { throw LookupError.unavailable }
         return text
     }
 
     /// A PDF's text, line by line.
     private func pdfLines(_ url: URL) async throws -> [String] {
-        let (data, response) = try await Self.session.data(from: url)
-        guard (response as? HTTPURLResponse)?.statusCode == 200, data.count <= Self.maxPDFBytes,
-              data.starts(with: Data("%PDF".utf8)), let pdf = PDFDocument(data: data) else { throw LookupError.unavailable }
-        return (0..<pdf.pageCount).flatMap { index in
-            (pdf.page(at: index)?.string ?? "").split(whereSeparator: \.isNewline).map(String.init)
-        }
+        let data = try await BoundedDownload.data(for: URLRequest(url: url), session: Self.session,
+                                                  maxBytes: Self.maxPDFBytes, accepts: BoundedDownload.isPDF)
+        return try await Self.lines(ofPDF: data)
+    }
+
+    /// Reads the PDF away from the main actor, since a long one takes a while.
+    @concurrent
+    private static func lines(ofPDF data: Data) async throws -> [String] {
+        try PDFText.lines(in: data)
     }
 }
 

@@ -86,8 +86,29 @@ enum BloodGlucoseMealTime: Int, CaseIterable, Identifiable {
 
 @Observable
 final class HealthStore {
-    /// Tags every sample this app (phone or watch) writes, so history can find entries from both.
+    /// Tags every sample this app (phone or watch) writes, so history can find entries from both. Any app allowed
+    /// to write the same types can add this key too, so it only marks an entry as ours alongside `isOwn(_:)`.
     static let entryMetadataKey = "HealthLoggerEntry"
+    /// The apps whose samples are Logalyst's: the iPhone app, the Watch app and their widget extensions. Health sets
+    /// a sample's source from the app that saved it, so unlike metadata another app can't claim one of these. These
+    /// identifiers haven't changed since the first release, so there are no older ones to accept.
+    static let ownBundleIdentifiers: Set<String> = [
+        "com.justinleahy.HealthLogger", "com.justinleahy.HealthLogger.watchkitapp",
+        "com.justinleahy.HealthLogger.widgets", "com.justinleahy.HealthLogger.watchkitapp.widgets",
+    ]
+    // Custom keys added from now on are named "com.justinleahy.HealthLogger.<name>" so they can't collide with
+    // another app's; the ones above keep their names so earlier entries still read.
+
+    /// Whether Logalyst saved this object: it carries the entry tag and Health says one of our apps saved it. An
+    /// entry from another app that copies the tag isn't listed, edited, deleted or read for food details.
+    static func isOwn(_ object: HKObject) -> Bool {
+        isOwn(metadata: object.metadata, sourceBundleIdentifier: object.sourceRevision.source.bundleIdentifier)
+    }
+
+    static func isOwn(metadata: [String: Any]?, sourceBundleIdentifier: String) -> Bool {
+        metadata?[entryMetadataKey] != nil && ownBundleIdentifiers.contains(sourceBundleIdentifier)
+    }
+
     /// Extra details saved on food entries, so a past entry can be logged again as it was.
     private static let mealMetadataKey = "HealthLoggerMeal"
     private static let servingsMetadataKey = "HealthLoggerServings"
@@ -102,9 +123,9 @@ final class HealthStore {
     private static let nutrientCoverageMetadataKey = "HealthLoggerNutrientCoverage"
     /// From 1.1: true when the nutrition is an estimate from a photo, and where published nutrition came from.
     private static let estimatedMetadataKey = "HealthLoggerEstimated"
-    private static let sourceTitleMetadataKey = "HealthLoggerSourceTitle"
-    private static let sourceURLMetadataKey = "HealthLoggerSourceURL"
-    private static let sourceRetrievedMetadataKey = "HealthLoggerSourceRetrieved"
+    static let sourceTitleMetadataKey = "HealthLoggerSourceTitle"
+    static let sourceURLMetadataKey = "HealthLoggerSourceURL"
+    static let sourceRetrievedMetadataKey = "HealthLoggerSourceRetrieved"
     private static let sourceMarketMetadataKey = "HealthLoggerSourceMarket"
     private static let sourceServingMetadataKey = "HealthLoggerSourceServing"
     private static let sourceProviderMetadataKey = "HealthLoggerSourceProvider"
@@ -483,10 +504,10 @@ final class HealthStore {
     }
 
     /// Where a food entry's nutrition was published, or nil for one that wasn't looked up (including every entry
-    /// saved before 1.1).
-    private static func source(in metadata: [String: Any]) -> NutritionSource? {
+    /// saved before 1.1). Only secure web addresses are read, since the source is offered as a link.
+    static func source(in metadata: [String: Any]) -> NutritionSource? {
         guard let title = metadata[sourceTitleMetadataKey] as? String,
-              let url = (metadata[sourceURLMetadataKey] as? String).flatMap(URL.init(string:)),
+              let url = (metadata[sourceURLMetadataKey] as? String).flatMap(URL.init(string:)), url.isSecureWeb,
               let retrieved = metadata[sourceRetrievedMetadataKey] as? Date else { return nil }
         return NutritionSource(title: title, url: url, retrieved: retrieved,
                                market: metadata[sourceMarketMetadataKey] as? String,
@@ -560,7 +581,8 @@ final class HealthStore {
     }
 
     /// Entries logged by this app on iPhone or Apple Watch, newest first, starting from `start` and before `end`
-    /// when given. A nil limit reads them all.
+    /// when given. A nil limit reads them all. Samples another app tagged as ours are left out (see `isOwn`), so
+    /// with a limit, fewer may be returned.
     func recentEntries(of metrics: [Metric] = Metric.all, includingFoods: Bool = true, since start: Date? = nil,
                        before end: Date? = nil, limit: Int? = 200) async throws -> [LoggedEntry] {
         var ours = HKQuery.predicateForObjects(withMetadataKey: Self.entryMetadataKey)
@@ -575,7 +597,7 @@ final class HealthStore {
             predicates: types.map { HKSamplePredicate.sample(type: $0, predicate: ours) },
             sortDescriptors: [SortDescriptor(\.startDate, order: .reverse)],
             limit: limit)
-        return try await descriptor.result(for: store).compactMap(entry(for:))
+        return try await descriptor.result(for: store).filter(Self.isOwn).compactMap(entry(for:))
     }
 
     /// Per-day sums of a quantity metric from every source in Health (not just this app),
@@ -726,6 +748,7 @@ final class HealthStore {
     // MARK: Deleting
 
     func delete(_ entry: LoggedEntry) async throws {
+        guard Self.isOwn(entry.sample) else { throw EntryError.notOwn }
         try await delete(entry.sample)
         // Deleting either side of an unfinished edit leaves one entry, so there's nothing left to finish: removing
         // the original after its correction was deleted would leave neither.
@@ -776,6 +799,7 @@ final class HealthStore {
     private func replace(_ original: LoggedEntry, with objects: [HKObject]) async throws {
         // Health keeps the ID an object is created with, so the correction can be found again before it's saved.
         guard let replacement = objects.first else { return }
+        guard Self.isOwn(original.sample) else { throw EntryError.notOwn }
         try await settleEdits(involving: original)
         var edit = PendingEdit(original: original.id, metricID: original.metric?.id, replacement: replacement.uuid,
                                title: original.title, started: .now)
@@ -836,7 +860,8 @@ final class HealthStore {
     /// Finishes an edit, or drops it and returns false if its correction isn't in Health. An edit whose correction
     /// turns out to have been saved is noted as such first, so if the delete fails it's still listed in History.
     private func finish(_ edit: PendingEdit) async throws -> Bool {
-        guard try await sample(of: edit.sampleType, id: edit.replacement) != nil else {
+        guard let replacement = try await sample(of: edit.sampleType, id: edit.replacement),
+              Self.isOwn(replacement) else {
             forget(edit)
             return false
         }
@@ -846,7 +871,8 @@ final class HealthStore {
             record(saved)
         }
         try injectFault(at: .delete)
-        if let original = try await sample(of: edit.sampleType, id: edit.original) {
+        // Edits only ever start from our own entries, so one that isn't is left alone rather than deleted.
+        if let original = try await sample(of: edit.sampleType, id: edit.original), Self.isOwn(original) {
             try await delete(original)
         }
         forget(edit)
@@ -981,7 +1007,14 @@ enum EditError: LocalizedError {
         }
     }
 }
+enum EntryError: LocalizedError {
+    /// The entry wasn't saved by Logalyst, so it isn't changed here. Health only lets an app delete its own.
+    case notOwn
 
+    var errorDescription: String? {
+        "This entry was saved by another app, so it can only be changed in the Health app."
+    }
+}
 
 enum FoodLoggingError: LocalizedError {
     case noKnownNutrition([String])

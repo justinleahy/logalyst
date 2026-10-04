@@ -94,7 +94,7 @@ struct NutritionWidgetView: View {
 
     var body: some View {
         switch family {
-        case .accessoryCircular: circular
+        case .accessoryCircular: circular.healthPrivate { Image(systemName: "fork.knife").font(.title3) }
         case .accessoryRectangular: rectangular
         case .accessoryInline: inline
         default: list
@@ -158,7 +158,10 @@ struct NutritionWidgetView: View {
                     .font(.headline)
                     .minimumScaleFactor(0.7)
                     .widgetAccentable()
-                if calories.allowsProgress { ProgressView(value: min(calories.progress, 1)) }
+                    .healthPrivate {
+                        Label("Nutrition", systemImage: "fork.knife").font(.headline).widgetAccentable()
+                    }
+                if calories.allowsProgress { ProgressView(value: min(calories.progress, 1)).healthPrivate() }
             }
             Text(macros.map { "\(Self.macroLetters[$0.metric.id] ?? "") \($0.hasData ? $0.option.formatNumber($0.total) : "–")\($0.missingIngredientCount > 0 ? "*" : "")" }
                 .joined(separator: " · "))
@@ -168,6 +171,7 @@ struct NutritionWidgetView: View {
                 .foregroundStyle(.secondary)
                 .accessibilityLabel(macros.map { "\($0.metric.name) \($0.amountText), \($0.status)" }
                     .joined(separator: ", "))
+                .healthPrivate()
             if macros.contains(where: { $0.missingIngredientCount > 0 }) {
                 Text("Includes partial nutrition").font(.caption2).foregroundStyle(.secondary)
             }
@@ -179,6 +183,7 @@ struct NutritionWidgetView: View {
     private var inline: some View {
         if let calories {
             Label(caloriesText(calories), systemImage: calories.metric.systemImage)
+                .healthPrivate { Label("Nutrition", systemImage: "fork.knife") }
         }
     }
 
@@ -206,12 +211,14 @@ private struct NutrientBar: View {
                 Text(nutrient.hasData ? "\(option.formatNumber(nutrient.total)) / \(option.format(nutrient.goal)) · \(nutrient.status)" : "No data available")
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
+                    .healthPrivate()
             }
             .font(.caption)
             .lineLimit(1)
             if nutrient.allowsProgress {
                 ProgressView(value: min(fraction, 1))
                     .tint(nutrient.metric.dailyGoal?.tint(forProgress: fraction))
+                    .healthPrivate()
             }
         }
     }

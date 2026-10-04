@@ -434,6 +434,14 @@ struct NutritionSource: Hashable, Codable {
     var provider: String
 }
 
+extension URL {
+    /// Whether this is an https address with a host, the only kind of source offered as a link. A source can come
+    /// from Health or iCloud as well as a lookup, so it's checked where it's shown rather than trusted.
+    nonisolated var isSecureWeb: Bool {
+        scheme?.lowercased() == "https" && host()?.isEmpty == false
+    }
+}
+
 /// Reads a serving's weight from how it's written on a label, such as "1 bar (30 g)".
 nonisolated enum ServingWeight {
     /// What a serving's text says it weighs.

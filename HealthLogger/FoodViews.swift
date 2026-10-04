@@ -1093,7 +1093,11 @@ struct SourceRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Link(destination: source.url) {
+            if source.url.isSecureWeb {
+                Link(destination: source.url) {
+                    Label(source.title, systemImage: "link")
+                }
+            } else {
                 Label(source.title, systemImage: "link")
             }
             Text(detail).font(.caption).foregroundStyle(.secondary)
