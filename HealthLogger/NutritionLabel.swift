@@ -58,7 +58,7 @@ struct NutritionLabel {
         }
         // European labels list amounts per 100 g (or mL) first, so the amounts read are for that, even when a
         // serving size is printed too. Scale them to the serving when it's in the same unit, or call the
-        // serving 100 g.
+        // serving 100 g or 100 mL, matching the column rather than assuming a density.
         if let per100 = rows.lazy.compactMap(Self.per100Unit).first {
             if let serving = Self.amount(in: servingSize, unit: per100) {
                 nutrients = nutrients.mapValues { ($0 * serving / 100 * 10).rounded() / 10 }
@@ -135,17 +135,26 @@ struct NutritionLabel {
         return match.output.1
     }
 
-    /// The weight or volume in a serving size, like 30 for "1 bar (30 g)" in grams. Nil if it's in another unit.
+    /// The weight or volume in a serving size, like 30 for "1 bar (30 g)" in grams, read as `ServingWeight` reads
+    /// it, so the nutrients are scaled to the same weight the food is given. Nil if it's in another unit, or isn't
+    /// one amount, as for "2 x 15 g".
     private static func amount(in serving: String, unit: Substring) -> Double? {
-        guard let match = serving.lowercased().matches(of: #/(\d+(?:\.\d+)?)\s*(g|ml)\b/#).last,
-              match.output.2 == unit else { return nil }
-        return Double(match.output.1)
+        unit == "g" ? ServingWeight.grams(in: serving) : ServingVolume.milliliters(in: serving)
     }
 
-    /// Trims stray punctuation and puts back the capital in "mL", which `clean` lowercased.
+    /// Trims stray punctuation, but not the point of a leading decimal like ".5 g", and puts back the capital in
+    /// "mL", which `clean` lowercased.
     private static func tidy(_ serving: String) -> String {
-        serving.trimmingCharacters(in: .whitespaces.union(.punctuationCharacters.subtracting(["(", ")"])))
-            .replacing(#/(\d)\s?ml\b/#) { "\($0.output.1) mL" }
+        let stray = CharacterSet.whitespaces.union(.punctuationCharacters).subtracting(["(", ")"])
+        func isStray(_ character: Character?) -> Bool {
+            character?.unicodeScalars.allSatisfy(stray.contains) ?? false
+        }
+        var trimmed = Substring(serving)
+        while isStray(trimmed.first), !(trimmed.first == "." && trimmed.dropFirst().first?.isNumber == true) {
+            trimmed = trimmed.dropFirst()
+        }
+        while isStray(trimmed.last) { trimmed = trimmed.dropLast() }
+        return String(trimmed).replacing(#/(\d)\s?ml\b/#) { "\($0.output.1) mL" }
     }
 
     // MARK: Nutrients

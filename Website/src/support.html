@@ -16,7 +16,7 @@ Daily totals reset at midnight.</p>
 
 <h3>How do I edit or delete an entry?</h3>
 <p>In the History tab, swipe to delete an entry, or tap it to fix it. Foods can be fixed there or in the Nutrition
-tab: tap one to change its servings (or weight), meal, or time. You can also delete entries in the Health app.</p>
+tab: tap one to change its servings, weight or volume when recorded, meal, or time. You can also delete entries in the Health app.</p>
 
 <h3>History says an edit didn't finish</h3>
 <p>Health can't change an entry, so Logalyst saves the corrected one and then deletes the original. If the original
@@ -27,7 +27,33 @@ through, it finishes the edit the next time it opens.</p>
 <h3>Why can't I log a food by weight?</h3>
 <p>A food needs its serving weight in grams. Swipe left on it in Add Food, tap <strong>Edit</strong>, and fill in
 <strong>Serving Weight</strong> (or tap the button that uses the weight its serving size states). Foods measured
-only by volume, like a drink in mL, are logged by the serving.</p>
+only by volume do not have a known weight; you can log them by volume when their serving volume is known.</p>
+
+<h3>How do I log a liquid food by volume?</h3>
+<p>Edit the food and fill in <strong>Serving Volume</strong> with the amount its nutrition describes. For
+nutrition per 100 mL, enter 100 mL; logging 180 mL then scales each known nutrient by 1.8. You can use mL,
+U.S. fluid ounces or Imperial fluid ounces, and switching units keeps the measured amount. U.S. and Imperial
+fluid ounces differ from each other and from weight ounces. Use the system stated on the label; an ambiguous
+“fl oz” or a photo alone cannot establish a volume conversion.</p>
+<p>Barcode, label and published-nutrition imports fill in a compatible volume when it is stated clearly.
+Otherwise, keep logging by servings until you can confirm it. A recipe's ingredients can have volumes, but
+the finished recipe is logged by servings. Replacing a measured food with one that lacks a compatible basis
+asks you to confirm a serving amount.</p>
+
+<h3>Why does nutrition say unavailable or partial?</h3>
+<p>A blank field means the nutrient is unknown. Enter <strong>0</strong> only when zero is stated; it stays
+different from a blank field. Meals and recipes add the values that are known and show how many included
+ingredients are missing each nutrient. An entirely unknown nutrient is unavailable. A known subtotal with
+missing ingredients is partial. Foods you leave out do not increase the missing count.</p>
+<p>A food needs at least one known nutrient, including a stated zero, to log directly. If a meal contains a
+food with no known nutrition, add a known value or leave that food out before logging. When another ingredient
+has nutrition, you can instead use <strong>Save as Recipe</strong> to keep the unknown ingredient and its
+missing-nutrition indicators with the rest of the meal. Unknown values are never filled in as zero.</p>
+<p>Daily totals include intake other apps record in Health. Older entries or other apps may not provide enough
+information to establish complete coverage. No recorded data does not prove nothing was consumed, and Health
+does not reveal whether an empty result means read access was denied. Widgets and spoken totals also qualify
+missing or partial data. <strong>Estimate</strong> and <strong>Published</strong> still describe where the
+figures came from; neither means that every nutrient is known.</p>
 
 <h3>How do I use a restaurant's nutrition for a photo of my meal?</h3>
 <p>After you take or choose the photo in <strong>Photo of Meal</strong>, type the restaurant or brand, such as
@@ -53,6 +79,11 @@ to receive changes.</p>
 <h3>My saved foods didn't show up on my new iPhone</h3>
 <p>Saved foods, recipes and settings sync through your iCloud account. Make sure you're signed in to iCloud and that
 Logalyst is turned on under <strong>Settings › [your name] › iCloud</strong>.</p>
+
+<h3>Some food details changed after using an older app version</h3>
+<p>Older versions can drop serving volumes or nutrition-coverage details when they rewrite foods and recipes,
+and may discard explicit zeros. Update both devices and review the serving basis and missing nutrients after
+editing on an older version. Logalyst cannot reconstruct information that the older version removed.</p>
 
 <h3>Siri doesn't understand my request</h3>
 <p>Every Siri phrase has to include the app's name, for example “Log water in Logalyst” or “Log my weight in Logalyst”.</p>

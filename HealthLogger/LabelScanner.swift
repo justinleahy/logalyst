@@ -38,7 +38,7 @@ struct ScanLabelView: View {
 }
 
 extension FoodDraft {
-    /// Fills in what a label gives: its serving size, if printed, with the weight it states in grams, and the
+    /// Fills in what a label gives: its serving size, if printed, with its separate weight and volume, and the
     /// nutrients it lists. A serving given only as a volume, like "1 cup (240 mL)", has no weight. Amounts the label
     /// doesn't list (or that weren't read) are kept only while the serving stays the same; for a different serving
     /// they're cleared, since they were for the old one.
@@ -47,17 +47,25 @@ extension FoodDraft {
             if !isSameServing(as: label.servingSize) { nutrients = [:] }
             servingSize = label.servingSize
             gramsPerServing = ServingWeight.grams(in: label.servingSize)
+            millilitersPerServing = ServingVolume.milliliters(in: label.servingSize)
         }
         nutrients.merge(label.nutrients) { $1 }
         source = .label
     }
 
-    /// Whether a serving is the one this already has: the same text, or the same weight in grams.
+    /// Whether a serving is the one this already has: the same text, weight, or explicit volume.
     private func isSameServing(as other: String) -> Bool {
+        // Older barcode imports used "100 g" even when the source was per 100 mL. A new label can establish
+        // the basis, but absent nutrients must not be inherited from an amount whose basis was never known.
+        if barcode != nil, servingSize == FoodDatabase.per100Serving,
+           gramsPerServing == nil, millilitersPerServing == nil { return false }
         let trimmed = (servingSize.trimmingCharacters(in: .whitespaces), other.trimmingCharacters(in: .whitespaces))
         if trimmed.0.localizedCaseInsensitiveCompare(trimmed.1) == .orderedSame { return true }
-        guard let grams = ServingWeight.grams(in: other) else { return false }
-        return gramsPerServing.map { abs($0 - grams) < 0.01 } ?? false
+        if let grams = ServingWeight.grams(in: other), let gramsPerServing,
+           abs(gramsPerServing - grams) < 0.01 { return true }
+        if let milliliters = ServingVolume.milliliters(in: other), let millilitersPerServing,
+           abs(millilitersPerServing - milliliters) < 0.01 { return true }
+        return false
     }
 }
 

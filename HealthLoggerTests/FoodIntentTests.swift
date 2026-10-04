@@ -122,18 +122,58 @@ final class FoodIntentTests {
         try await cleanUp(names: [], since: .now)
     }
 
-    /// A shortcut from another iPhone, whose iCloud copy of the food may keep its creation time less precisely,
-    /// still finds it.
-    @Test func anIDAMillisecondOffStillFindsItsFood() async throws {
-        let oats = food("Oats")
+    /// Two foods with the same name and brand created within the same millisecond are still told apart: the one
+    /// offered is the one logged.
+    @Test func foodsCreatedTogetherAreToldApart() async throws {
+        let start = Date.now.addingTimeInterval(-60)
+        let time = Date(timeIntervalSince1970: (Date.now.timeIntervalSince1970 - 3600).rounded())
+        let favorite = food("Oats", brand: "Quaker", calories: 200)
+        favorite.isFavorite = true
+        favorite.created = time.addingTimeInterval(0.0004)
+        let other = food("Oats", brand: "Quaker", calories: 100)
+        other.created = time.addingTimeInterval(0.0001)
         try context.save()
-        let id = SavedFoodEntity(oats).id
-        let split = try #require(id.lastIndex(of: "\u{1F}"))
-        let milliseconds = try #require(Int64(id[id.index(after: split)...]))
-        let nearby = String(id[...split]) + String(milliseconds + 1)
-        #expect(SavedFoodEntity.food(for: nearby, in: [oats]) === oats)
-        let later = String(id[...split]) + String(milliseconds + 5000)
-        #expect(SavedFoodEntity.food(for: later, in: [oats]) == nil)
+
+        let offered = try await SavedFoodQuery().entities(matching: favorite.name)
+        #expect(offered.count == 2)
+        let picked = try #require(offered.first)
+        #expect(picked.detail.contains("200 kcal"))
+        #expect(SavedFoodEntity.food(for: picked.id, in: [other, favorite]) === favorite)
+        _ = try await LogFoodIntent(food: picked, meal: .snack).perform()
+        #expect(try await entries(named: [favorite.name], since: start).map { $0.food?.calories } == [200])
+        try await cleanUp(names: [favorite.name], since: start)
+    }
+
+    /// A shortcut whose food was deleted reports it, rather than logging another food with the same name created
+    /// moments later.
+    @Test func aDeletedFoodIsNotReplacedByOneWithTheSameName() async throws {
+        let time = Date.now.addingTimeInterval(-3600)
+        let deleted = food("Oats", brand: "Quaker")
+        deleted.created = time
+        let remaining = food("Oats", brand: "Quaker")
+        remaining.created = time.addingTimeInterval(0.5)
+        try context.save()
+        let id = SavedFoodEntity(deleted).id
+        context.delete(deleted)
+        made.removeAll { $0 === deleted }
+        try context.save()
+
+        #expect(SavedFoodEntity.food(for: id, in: [remaining]) == nil)
+        #expect(try await SavedFoodQuery().entities(for: [id]).isEmpty)
+        try await cleanUp(names: [], since: .now)
+    }
+
+    /// A food saved before 1.1 has no permanent ID until Siri and Shortcuts first look for it, and then keeps it.
+    @Test func anOlderFoodGetsAPermanentID() async throws {
+        let older = food("Granola")
+        older.uuid = nil
+        try context.save()
+
+        let offered = try #require(try await SavedFoodQuery().entities(matching: older.name).first)
+        let uuid = try #require(older.uuid)
+        #expect(offered.id == uuid.uuidString)
+        #expect(context.hasChanges == false)
+        #expect(try await SavedFoodQuery().entities(for: [offered.id]).map(\.name) == [older.name])
         try await cleanUp(names: [], since: .now)
     }
 

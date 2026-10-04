@@ -22,7 +22,8 @@ struct ServingWeightTests {
         ("1 bar (30 g)", 30.0), ("30g", 30), ("3/4 cup (170 g)", 170), ("100 g", 100), ("1 oz (28 g)", 28),
         ("28g/1oz", 28), ("Serving 30,5 g", 30.5), ("1,5 kg", 1500), ("1 package (28 g)", 28), ("2 grams", 2),
         ("1 bar (30 g) = 30 g", 30), ("1/2 g", 0.5), (".5 g", 0.5), ("1 1/2 g", 1.5), ("1/2 cup (60 g)", 60),
-        ("1/2 kg", 500), ("1,000 g", 1000),
+        ("1/2 kg", 500), ("1,000 g", 1000), ("1 / 2 g", 0.5), ("1 box (30 g)", 30), ("1 bar (30 g)*", 30),
+        ("1 cup (240 mL) 30 g", 30),
     ])
     func readsAStatedGramWeight(text: String, grams: Double) {
         #expect(ServingWeight.grams(in: text) == grams)
@@ -37,9 +38,18 @@ struct ServingWeightTests {
 
     /// A multiple or a range is read in full, as no one weight, rather than as its last number.
     @Test(arguments: ["2 x 30 g", "2x30g", "2 × 30 g", "30 g x 2", "2 biscuits x 15 g", "20-30 g", "20 – 30 g",
-                      "20 to 30 g", "1.5-2 g", "1/0 g"])
+                      "20 to 30 g", "1.5-2 g", "1/0 g", "2 x (30 g)", "30 g (x2)", "30 g (2x)", "2*15 g",
+                      ".5-1 g"])
     func multiplesAndRangesAreAmbiguous(text: String) {
         #expect(ServingWeight.reading(of: text) == .ambiguous)
+    }
+
+    /// A volume is read the same way, for labels whose nutrition is per 100 mL.
+    @Test func readsAStatedVolume() {
+        #expect(ServingWeight.milliliters(in: "1 cup (240mL)") == 240)
+        #expect(ServingWeight.milliliters(in: "1/2 can (165 ml)") == 165)
+        #expect(ServingWeight.milliliters(in: "2 x 250 mL") == nil)
+        #expect(ServingWeight.milliliters(in: "1 bar (30 g)") == nil)
     }
 
     @Test func noWeightIsUnstated() {
@@ -206,10 +216,11 @@ struct PortionCodingTests {
         #expect(decoded == portion)
     }
 
-    /// Unweighed portions encode exactly as build 25 does, so a phone still on it reads them the same.
+    /// The new coverage marker is ignored by build 25; unweighed portions still omit measurement keys.
     @Test func unweighedPortionsEncodeWithoutTheNewKeys() throws {
         let portion = FoodPortion(name: "Oats", nutrients: ["dietaryEnergyConsumed": 150])
         let object = try JSONSerialization.jsonObject(with: JSONEncoder().encode(portion)) as! [String: Any]
-        #expect(Set(object.keys) == ["id", "name", "brand", "servingSize", "nutrients", "servings"])
+        #expect(Set(object.keys) == ["id", "name", "brand", "servingSize", "nutrients", "servings", "coverageIsUncertain"])
+        #expect(object["coverageIsUncertain"] as? Bool == false)
     }
 }

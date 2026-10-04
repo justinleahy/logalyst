@@ -11,6 +11,8 @@ struct PublishedFood: Identifiable, Hashable, Codable {
     var nutrients: [String: Double]
     /// What one serving weighs in grams, only when the source states it.
     var gramsPerServing: Double?
+    /// One serving's volume, normalized to milliliters only from an explicit, unambiguous source unit.
+    var millilitersPerServing: Double? = nil
     var source: NutritionSource
 
     /// What the values are for, such as "4 oz".
@@ -19,7 +21,8 @@ struct PublishedFood: Identifiable, Hashable, Codable {
     /// One serving, ready to log, with its source kept alongside.
     var portion: FoodPortion {
         FoodPortion(name: name, brand: brand, servingSize: servingBasis, nutrients: nutrients,
-                    gramsPerServing: gramsPerServing, source: source)
+                    gramsPerServing: gramsPerServing, millilitersPerServing: millilitersPerServing,
+                    source: source)
     }
 
     /// The label nutrients the source doesn't give, which totals leave out.

@@ -92,7 +92,8 @@ enum MealPhoto {
             standard portions it is: 1 for a regular portion, 2 for double or extra, 0.5 for light, or the count \
             of pieces like 3 for three tacos. Mark items you can see as photo. Mark foods that this dish usually \
             has underneath other foods, but that you can't see, as hidden. Estimate typical nutrition for one \
-            standard portion of each item. Don't list plates, cutlery, napkins or packaging.
+            standard portion of each item. Use -1 for a nutrient you cannot estimate; zero means an actual \
+            estimate of zero, not missing information. Don't list plates, cutlery, napkins or packaging.
             """
         let description = describing(details)
         if !description.isEmpty {
@@ -142,7 +143,8 @@ enum MealPhoto {
             and utensils. \
             Judge drinks by how they look: black coffee, tea and water have almost no calories unless milk, cream \
             or sugar is visible. Don't list plates, cutlery or garnishes too small to matter. Only list what's \
-            really in the photo; if there's no food or drink, return no foods.
+            really in the photo; if there's no food or drink, return no foods. Use -1 for a nutrient you cannot \
+            estimate; zero means an actual estimate of zero, not missing information.
             """
         // The photo takes most of the model's context, so only the most recently used names fit.
         let names = knownNames.prefix(20)
@@ -215,19 +217,19 @@ private struct FoodEstimate {
     var count: Int
     @Guide(description: "One serving in everyday units: one piece, such as 1 medium or 1 slice, when there are separate pieces; otherwise the whole amount shown, such as 1.5 cups or 12 fluid ounces")
     var servingSize: String
-    @Guide(description: "Calories in kcal for one serving", .range(0...3000))
+    @Guide(description: "Calories in kcal for one serving, or -1 if unknown", .range(-1...3000))
     var calories: Int
-    @Guide(description: "Protein in grams for one serving", .range(0...300))
+    @Guide(description: "Protein in grams for one serving, or -1 if unknown", .range(-1...300))
     var protein: Double
-    @Guide(description: "Carbohydrates in grams for one serving", .range(0...500))
+    @Guide(description: "Carbohydrates in grams for one serving, or -1 if unknown", .range(-1...500))
     var carbohydrates: Double
-    @Guide(description: "Total fat in grams for one serving", .range(0...300))
+    @Guide(description: "Total fat in grams for one serving, or -1 if unknown", .range(-1...300))
     var fat: Double
-    @Guide(description: "Sugar in grams for one serving", .range(0...300))
+    @Guide(description: "Sugar in grams for one serving, or -1 if unknown", .range(-1...300))
     var sugar: Double
-    @Guide(description: "Fiber in grams for one serving", .range(0...100))
+    @Guide(description: "Fiber in grams for one serving, or -1 if unknown", .range(-1...100))
     var fiber: Double
-    @Guide(description: "Caffeine in milligrams for one serving, 0 for most foods", .range(0...500))
+    @Guide(description: "Caffeine in milligrams for one serving, or -1 if unknown; do not assume zero", .range(-1...500))
     var caffeine: Double
 
     /// One piece or the whole amount shown, eaten `count` times.
@@ -238,8 +240,9 @@ private struct FoodEstimate {
     }
 }
 
-/// An estimate from a photo, marked as one, with its nutrition rounded to a tenth and empty amounts left out.
-nonisolated private func estimatedPortion(name: String, servingSize: String, servings: Double, calories: Int, protein: Double,
+/// An estimate from a photo, with known amounts (including zero) rounded to a tenth. Negative/invalid values
+/// represent unknown nutrition. Descriptions in a photo never establish a measured weight or volume.
+nonisolated func estimatedPortion(name: String, servingSize: String, servings: Double, calories: Int, protein: Double,
                               carbohydrates: Double, fat: Double, sugar: Double, fiber: Double,
                               caffeine: Double) -> FoodPortion {
     let nutrients: [String: Double] = [
@@ -258,7 +261,8 @@ nonisolated private func estimatedPortion(name: String, servingSize: String, ser
         amount += amount == "1" ? " serving" : " servings"
     }
     return FoodPortion(name: name.prefix(1).uppercased() + name.dropFirst(), servingSize: amount,
-                       nutrients: nutrients.filter { $0.value > 0 }.mapValues { ($0 * 10).rounded() / 10 },
+                       nutrients: nutrients.filter { $0.value.isFinite && $0.value >= 0 }
+                        .mapValues { ($0 * 10).rounded() / 10 },
                        servings: servings, isEstimate: true)
 }
 
@@ -292,19 +296,19 @@ private struct BrandedFoodEstimate {
     var origin: ItemOrigin
     @Guide(description: "One standard portion in everyday units, such as 4 oz, 1 cup or 1 taco")
     var servingSize: String
-    @Guide(description: "Calories in kcal for one standard portion", .range(0...3000))
+    @Guide(description: "Calories in kcal for one standard portion, or -1 if unknown", .range(-1...3000))
     var calories: Int
-    @Guide(description: "Protein in grams for one standard portion", .range(0...300))
+    @Guide(description: "Protein in grams for one standard portion, or -1 if unknown", .range(-1...300))
     var protein: Double
-    @Guide(description: "Carbohydrates in grams for one standard portion", .range(0...500))
+    @Guide(description: "Carbohydrates in grams for one standard portion, or -1 if unknown", .range(-1...500))
     var carbohydrates: Double
-    @Guide(description: "Total fat in grams for one standard portion", .range(0...300))
+    @Guide(description: "Total fat in grams for one standard portion, or -1 if unknown", .range(-1...300))
     var fat: Double
-    @Guide(description: "Sugar in grams for one standard portion", .range(0...300))
+    @Guide(description: "Sugar in grams for one standard portion, or -1 if unknown", .range(-1...300))
     var sugar: Double
-    @Guide(description: "Fiber in grams for one standard portion", .range(0...100))
+    @Guide(description: "Fiber in grams for one standard portion, or -1 if unknown", .range(-1...100))
     var fiber: Double
-    @Guide(description: "Caffeine in milligrams for one standard portion, 0 for most foods", .range(0...500))
+    @Guide(description: "Caffeine in milligrams for one standard portion, or -1 if unknown; do not assume zero", .range(-1...500))
     var caffeine: Double
 
     var item: MealPhoto.BrandedItem {

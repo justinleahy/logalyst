@@ -26,6 +26,17 @@ struct LoggedEntry: Identifiable, Hashable {
 struct DailyTotal: Identifiable {
     let day: Date
     let sum: HKQuantity?
+    /// Known missing ingredients in Logalyst entries only. Zero is not proof of complete intake.
+    var missingIngredientCount = 0
+
+    var hasRecordedData: Bool { sum != nil }
+    var isPartial: Bool { missingIngredientCount > 0 }
+    var coverageText: String {
+        if isPartial {
+            return "Unavailable for \(missingIngredientCount) ingredient\(missingIngredientCount == 1 ? "" : "s")"
+        }
+        return hasRecordedData ? "Recorded total; coverage may be incomplete" : "No recorded data available"
+    }
 
     var id: Date { day }
 
@@ -86,6 +97,9 @@ final class HealthStore {
     private static let gramsPerServingMetadataKey = "HealthLoggerGramsPerServing"
     /// "g" or "oz" when the amount was entered by weight.
     private static let weightUnitMetadataKey = "HealthLoggerWeightUnit"
+    private static let millilitersPerServingMetadataKey = "HealthLoggerMillilitersPerServing"
+    private static let volumeUnitMetadataKey = "HealthLoggerVolumeUnit"
+    private static let nutrientCoverageMetadataKey = "HealthLoggerNutrientCoverage"
     /// From 1.1: true when the nutrition is an estimate from a photo, and where published nutrition came from.
     private static let estimatedMetadataKey = "HealthLoggerEstimated"
     private static let sourceTitleMetadataKey = "HealthLoggerSourceTitle"
@@ -413,19 +427,25 @@ final class HealthStore {
     }
 
     /// Saves each food as one Health food entry, so Health shows it by name alongside its nutrients.
-    /// Foods with nothing to log are skipped. When replacing a logged food, pass the one food that corrects it.
+    /// Excluded portions are skipped. Entirely unknown foods need a recipe aggregate with actual nutrition;
+    /// Health rejects empty correlations, and a zero placeholder would invent a measurement.
+    /// When replacing a logged food, pass the one food that corrects it.
     func saveFoods(_ foods: [FoodPortion], meal: Meal, date: Date, replacing original: LoggedEntry? = nil) async throws {
-        let entries = foods.compactMap { foodEntry(for: $0, meal: meal, date: date) }
+        let included = foods.filter { $0.servings.isFinite && $0.servings > 0 }
+        let unknown = included.filter { !$0.hasKnownNutrition }
+        guard unknown.isEmpty else { throw FoodLoggingError.noKnownNutrition(unknown.map(\.name)) }
+        let entries = included.compactMap { foodEntry(for: $0, meal: meal, date: date) }
         guard !entries.isEmpty else { return }
         try await save(entries, replacing: original)
     }
 
     private func foodEntry(for food: FoodPortion, meal: Meal, date: Date) -> HKCorrelation? {
+        guard food.servings.isFinite, food.servings > 0 else { return nil }
         // Only the food entry is tagged as ours, so history lists the food once rather than per nutrient.
         let nutrientMetadata: [String: Any] = [HKMetadataKeyWasUserEntered: true, HKMetadataKeyFoodType: food.name]
         let samples = food.nutrients.keys.sorted().compactMap { id -> HKSample? in
             let value = food.amount(of: id)
-            guard value > 0, let metric = Metric.metric(id: id), case .quantity(let type, let options) = metric.kind,
+            guard value.isFinite, value >= 0, let metric = Metric.metric(id: id), case .quantity(let type, let options) = metric.kind,
                   let unit = options.first else { return nil }
             return HKQuantitySample(type: HKQuantityType(type), quantity: unit.quantity(fromDisplay: value),
                                     start: date, end: date, metadata: nutrientMetadata)
@@ -440,6 +460,14 @@ final class HealthStore {
         if food.canWeigh, let grams = food.gramsPerServing {
             metadata[Self.gramsPerServingMetadataKey] = grams
             if let unit = food.enteredWeightUnit { metadata[Self.weightUnitMetadataKey] = unit.rawValue }
+        }
+        if food.canMeasureVolume, let milliliters = food.millilitersPerServing {
+            metadata[Self.millilitersPerServingMetadataKey] = milliliters
+            if let unit = food.enteredVolumeUnit { metadata[Self.volumeUnitMetadataKey] = unit.rawValue }
+        }
+        let coverage = Dictionary(uniqueKeysWithValues: Self.foodNutrientIDs.map { ($0, food.coverage(of: $0)) })
+        if let data = try? JSONEncoder().encode(coverage), let json = String(data: data, encoding: .utf8) {
+            metadata[Self.nutrientCoverageMetadataKey] = json
         }
         if food.isEstimate { metadata[Self.estimatedMetadataKey] = true }
         if let source = food.source {
@@ -554,7 +582,60 @@ final class HealthStore {
     /// oldest first and ending today. Days with nothing logged have a nil sum.
     func dailyTotals(for metric: Metric, days: Int) async throws -> [DailyTotal] {
         guard case .quantity(let id, _) = metric.kind else { return [] }
-        return try await dailyTotals(of: id, days: days)
+        let totals = try await dailyTotals(of: id, days: days)
+        guard Self.foodNutrientIDs.contains(metric.id) else { return totals }
+        let coverage = try await dailyFoodCoverage(days: days)
+        return totals.map { day in
+            var day = day
+            day.missingIngredientCount = coverage[day.day]?[metric.id]?.missing ?? 0
+            return day
+        }
+    }
+
+    /// Reads food coverage once for all nutrients; numerical totals still come from every source in Health.
+    func dailyNutritionTotals(for metrics: [Metric], days: Int) async throws -> [Metric: [DailyTotal]] {
+        let coverage = try await dailyFoodCoverage(days: days)
+        var result: [Metric: [DailyTotal]] = [:]
+        for metric in metrics {
+            guard case .quantity(let id, _) = metric.kind else { continue }
+            result[metric] = try await dailyTotals(of: id, days: days).map { day in
+                var day = day
+                day.missingIngredientCount = coverage[day.day]?[metric.id]?.missing ?? 0
+                return day
+            }
+        }
+        return result
+    }
+
+    private static var foodNutrientIDs: [String] {
+        Metric.metrics(in: .intake).map(\.id).filter { !["dietaryWater", "alcoholicBeverages"].contains($0) }
+    }
+
+    private static func coverage(in metadata: [String: Any]) -> [String: NutrientCoverage]? {
+        guard let json = metadata[nutrientCoverageMetadataKey] as? String, let data = json.data(using: .utf8) else {
+            return nil
+        }
+        return try? JSONDecoder().decode([String: NutrientCoverage].self, from: data)
+    }
+
+    private func dailyFoodCoverage(days: Int) async throws -> [Date: [String: NutrientCoverage]] {
+        let calendar = Calendar.current
+        let end = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: .now))!
+        let start = calendar.date(byAdding: .day, value: -days, to: end)!
+        let entries = try await recentEntries(of: [], since: start, before: end, limit: nil)
+        var result: [Date: [String: NutrientCoverage]] = [:]
+        for entry in entries {
+            // Legacy entries do not reveal how many ingredients their nutrition represents.
+            guard let coverage = Self.coverage(in: entry.sample.metadata ?? [:]) else { continue }
+            let day = calendar.startOfDay(for: entry.date)
+            for (id, value) in coverage {
+                let previous = result[day]?[id]
+                result[day, default: [:]][id] = NutrientCoverage(
+                    known: (previous?.known ?? 0) + max(0, value.known),
+                    missing: (previous?.missing ?? 0) + max(0, value.missing))
+            }
+        }
+        return result
     }
 
     private func dailyTotals(of id: HKQuantityTypeIdentifier, days: Int) async throws -> [DailyTotal] {
@@ -609,7 +690,7 @@ final class HealthStore {
         // Entries saved before 1.1, or of foods with no known serving weight, can only be entered by the serving.
         let gramsPerServing = ((metadata[Self.gramsPerServingMetadataKey] as? NSNumber)?.doubleValue)
             .flatMap { $0 > 0 ? $0 : nil }
-        let portion = FoodPortion(
+        var portion = FoodPortion(
             name: name, brand: metadata[Self.brandMetadataKey] as? String ?? "",
             servingSize: metadata[Self.servingSizeMetadataKey] as? String ?? "",
             nutrients: servings > 0 ? totals.mapValues { $0 / servings } : totals, servings: servings > 0 ? servings : 1,
@@ -618,9 +699,17 @@ final class HealthStore {
                 : (metadata[Self.weightUnitMetadataKey] as? String).flatMap(WeightUnit.init(rawValue:)),
             source: Self.source(in: metadata),
             isEstimate: (metadata[Self.estimatedMetadataKey] as? NSNumber)?.boolValue ?? false)
+        portion.millilitersPerServing = ((metadata[Self.millilitersPerServingMetadataKey] as? NSNumber)?.doubleValue)
+            .flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
+        portion.volumeUnit = (metadata[Self.volumeUnitMetadataKey] as? String).flatMap(VolumeUnit.init(rawValue:))
+        portion.nutrientCoverage = Self.coverage(in: metadata)
+        portion.coverageIsUncertain = portion.nutrientCoverage == nil
         let meal = (metadata[Self.mealMetadataKey] as? String).flatMap(Meal.init(rawValue:)) ?? Meal(at: food.startDate)
-        let text = totals["dietaryEnergyConsumed"].map { "\($0.formatted(.number.precision(.fractionLength(0)))) kcal" }
-            ?? "Logged"
+        let calorieCoverage = portion.coverage(of: "dietaryEnergyConsumed")
+        let text = totals["dietaryEnergyConsumed"].map {
+            "\($0.formatted(.number.precision(.fractionLength(0)))) kcal" + (calorieCoverage.missing > 0 ? " · Partial" : "")
+                + (calorieCoverage.isUncertain ? " · Coverage unknown" : "")
+        } ?? "Calories unavailable"
         return LoggedEntry(sample: food, metric: nil, title: name, systemImage: "fork.knife", valueText: text,
                            food: portion, meal: meal)
     }
@@ -687,6 +776,7 @@ final class HealthStore {
     private func replace(_ original: LoggedEntry, with objects: [HKObject]) async throws {
         // Health keeps the ID an object is created with, so the correction can be found again before it's saved.
         guard let replacement = objects.first else { return }
+        try await settleEdits(involving: original)
         var edit = PendingEdit(original: original.id, metricID: original.metric?.id, replacement: replacement.uuid,
                                title: original.title, started: .now)
         editsInProgress.insert(edit.id)
@@ -709,6 +799,30 @@ final class HealthStore {
             forget(edit)
         } catch {
             throw EditError.originalRemains(edit, error)
+        }
+    }
+
+    /// Before an entry is edited again, finishes or rules out an unfinished edit it's part of, so the new edit can't
+    /// leave an extra entry. Editing the correction of an unfinished edit first removes that edit's original:
+    /// otherwise the new edit would delete the correction, and the unfinished one, finding its correction gone,
+    /// would keep its original alongside the new correction. If the original can't be removed,
+    /// `EditError.earlierEditUnfinished` is thrown and nothing changes. Editing the original of an unfinished edit,
+    /// while its correction is in Health, throws `EditError.alreadyCorrected`, since both would then be corrections.
+    private func settleEdits(involving entry: LoggedEntry) async throws {
+        for edit in pendingEdits where !editsInProgress.contains(edit.id) {
+            if edit.replacement == entry.id {
+                do {
+                    _ = try await finish(edit)
+                } catch {
+                    throw EditError.earlierEditUnfinished(edit, error)
+                }
+            } else if edit.original == entry.id {
+                guard try await sample(of: edit.sampleType, id: edit.replacement) == nil else {
+                    throw EditError.alreadyCorrected(edit)
+                }
+                // Its correction was never saved, so this is still the only entry.
+                forget(edit)
+            }
         }
     }
 
@@ -843,6 +957,12 @@ enum EditError: LocalizedError {
     case originalRemains(PendingEdit, Error)
     /// The correction was deleted before the edit was finished, so the original was kept rather than removed.
     case correctionMissing(PendingEdit)
+    /// The entry being edited is the correction of an earlier edit whose original couldn't be removed, so it wasn't
+    /// edited.
+    case earlierEditUnfinished(PendingEdit, Error)
+    /// The entry being edited is the original of an unfinished edit, whose correction is in Health too, so it wasn't
+    /// edited.
+    case alreadyCorrected(PendingEdit)
 
     var errorDescription: String? {
         switch self {
@@ -851,6 +971,25 @@ enum EditError: LocalizedError {
                 + "Try again now, or later from History.\n\n\(error.healthMessage)"
         case .correctionMissing:
             "The corrected entry is no longer in Health, so the original was kept."
+        case .earlierEditUnfinished(_, let error):
+            "This entry corrects another that's still in Health, from an edit that didn't finish, and that one "
+                + "couldn't be removed, so nothing was changed. Remove the original or keep both in History, then "
+                + "edit this entry again.\n\n\(error.healthMessage)"
+        case .alreadyCorrected:
+            "This entry was corrected by an edit that didn't finish, so both are listed. Remove the original or "
+                + "keep both in History before editing it."
+        }
+    }
+}
+
+
+enum FoodLoggingError: LocalizedError {
+    case noKnownNutrition([String])
+
+    var errorDescription: String? {
+        switch self {
+        case .noKnownNutrition(let names):
+            "No nutrition is available for \(names.formatted(.list(type: .and))). Add a known nutrient or leave the food out before logging. If other ingredients have nutrition, save the meal as a recipe to retain the unavailable ingredients together."
         }
     }
 }

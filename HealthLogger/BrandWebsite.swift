@@ -568,6 +568,8 @@ nonisolated enum NutritionTable {
         case serving
         /// The serving's weight in grams, as a number column.
         case servingGrams
+        /// A numeric volume column, with its unit carried alongside (including ambiguous fluid ounces).
+        case servingVolume
         case nutrient(String)
         /// A column the app doesn't log, such as calories from fat or iron.
         case other
@@ -611,12 +613,18 @@ nonisolated enum NutritionTable {
                     text = text.dropFirst()
                 }
                 var unit: String?
-                if let match = text.prefixMatch(of: #/\s*\(\s*([a-z%]+)\s*\)/#) {
-                    unit = String(match.output.1)
+                if let match = text.prefixMatch(of: #/\s*\(\s*([a-z%][a-z% ]*)\s*\)/#) {
+                    unit = String(match.output.1).trimmingCharacters(in: .whitespaces)
+                        .replacing(#/\bu\s+s\b/#, with: "us")
                     text = text[match.range.upperBound...]
                 }
                 var column = label.column
                 if column == .serving, unit == "g" { column = .servingGrams }
+                if column == .serving, let unit,
+                   ServingVolume.milliliters(in: "1 \(unit)") != nil || unit.contains("fl oz")
+                    || unit.contains("fluid ounce") {
+                    column = .servingVolume
+                }
                 found.append((column, unit))
                 continue
             }
@@ -624,7 +632,9 @@ nonisolated enum NutritionTable {
             text = text.drop { $0.isLetter || $0.isNumber }
             text = text.drop { !($0.isLetter || $0.isNumber) }
         }
-        if let serving = found.firstIndex(where: { $0.column == .serving || $0.column == .servingGrams }) {
+        if let serving = found.firstIndex(where: {
+            $0.column == .serving || $0.column == .servingGrams || $0.column == .servingVolume
+        }) {
             let after = found[serving...]
             let heading = found[..<serving].filter { label in
                 label.column != .other && !after.contains { $0.column == label.column }
@@ -704,6 +714,7 @@ nonisolated enum NutritionTable {
                 foods.append(PublishedFood(
                     id: "\(document.url.absoluteString)#\(index)", name: name, brand: brand, nutrients: row.nutrients,
                     gramsPerServing: row.grams ?? ServingWeight.grams(in: row.serving),
+                    millilitersPerServing: row.milliliters ?? ServingVolume.milliliters(in: row.serving),
                     source: NutritionSource(title: document.title, url: document.url, retrieved: retrieved,
                                             market: nil, servingBasis: row.serving,
                                             provider: document.url.host()?.replacing("www.", with: "") ?? "")))
@@ -750,6 +761,8 @@ nonisolated enum NutritionTable {
         var serving: String
         /// The serving's weight, when a column gives it.
         var grams: Double?
+        /// The serving's volume, when a column gives an unambiguous unit.
+        var milliliters: Double?
         var nutrients: [String: Double]
     }
 
@@ -772,14 +785,22 @@ nonisolated enum NutritionTable {
         var name = tokens.joined(separator: " ")
         var serving = ""
         var grams: Double?
+        var milliliters: Double?
         if let index = numeric.firstIndex(where: { $0.column == .servingGrams }) {
-            guard let weight = Double(values[index]), weight > 0 else { return nil }
+            guard let weight = Double(values[index]), weight.isFinite, weight > 0 else { return nil }
             grams = weight
             serving = "\(values[index]) g"
-        } else if let start = servingStart(in: name) {
+        }
+        if let index = numeric.firstIndex(where: { $0.column == .servingVolume }) {
+            guard let volume = Double(values[index]), volume.isFinite, volume > 0,
+                  let unit = numeric[index].unit else { return nil }
+            serving = "\(values[index]) \(unit == "ml" ? "mL" : unit)"
+            milliliters = ServingVolume.milliliters(in: serving)
+        }
+        if serving.isEmpty, let start = servingStart(in: name) {
             serving = String(name[start...]).trimmingCharacters(in: .whitespaces).replacing(#/\s+/#, with: " ")
             name = String(name[..<start])
-        } else {
+        } else if serving.isEmpty {
             return nil
         }
         name = name.trimmingCharacters(in: CharacterSet(charactersIn: "*†‡ ")).replacing(#/\s+/#, with: " ")
@@ -792,7 +813,7 @@ nonisolated enum NutritionTable {
             nutrients[id] = value
         }
         guard !nutrients.isEmpty else { return nil }
-        return Row(name: name, serving: serving, grams: grams, nutrients: nutrients)
+        return Row(name: name, serving: serving, grams: grams, milliliters: milliliters, nutrients: nutrients)
     }
 
     /// Where a row's serving begins: the last amount followed by a word that isn't inside parentheses, as in "1
@@ -923,6 +944,7 @@ struct ModelRowExtractor: RowExtracting {
         return PublishedFood(
             id: "\(line.document.url.absoluteString)#model\(line.number)", name: row.name, brand: brand,
             nutrients: nutrients, gramsPerServing: ServingWeight.grams(in: row.serving),
+            millilitersPerServing: ServingVolume.milliliters(in: row.serving),
             source: NutritionSource(title: line.document.title, url: line.document.url, retrieved: retrieved,
                                     market: nil, servingBasis: row.serving,
                                     provider: line.document.url.host()?.replacing("www.", with: "") ?? ""))
@@ -932,19 +954,50 @@ struct ModelRowExtractor: RowExtracting {
     /// between: "430 kcal", "430 calories", "Protein 12g", "Fat: 7 g". The "fat" of "saturated fat" or "trans fat"
     /// isn't total fat.
     static func isLabeled(_ value: Double, as labels: [String], in text: String, id: String) -> Bool {
+        guard value.isFinite, value >= 0 else { return false }
         let text = text.lowercased()
-        for match in text.matches(of: #/\d+(?:\.\d+)?/#) where Double(match.output) == value {
+        for match in text.matches(of: #/(?:\d+(?:\.\d+)?|\.\d+)/#)
+        where Double(match.output) == value {
+            let prefix = text[..<match.range.lowerBound]
+            let suffix = text[match.range.upperBound...]
+            if let previous = prefix.last,
+               previous.isNumber || (".,".contains(previous) && prefix.dropLast().last?.isNumber == true) { continue }
+            if let next = suffix.first,
+               next.isNumber || (".,".contains(next) && suffix.dropFirst().first?.isNumber == true) { continue }
+            if prefix.contains(#/\/\s*$/#) || suffix.contains(#/^\s*\//#) { continue }
+            // Bounds and ranges aren't exact values. In particular, "Sugar < 1 g" must not become 1 g.
+            if prefix.contains(#/(?:[<>≤≥~≈−–—-]|less than|more than|up to)\s*$/#)
+                || suffix.contains(#/^\s*(?:[-–—]|or less\b|or more\b|to\s+\d)/#)
+                || suffix.contains(#/^\s*[a-zµ]+\s+(?:or less|or more)\b/#) { continue }
+            // Published values stay in their printed units; don't reinterpret grams of sodium as milligrams.
+            // The model is told not to calculate conversions, so unsupported units remain unknown.
+            if let unit = suffix.prefixMatch(of: #/\s*(mg|milligrams?|g|grams?|kg|kilograms?|mcg|µg|ug|kcal|kj|cal|oz|ml|%)(?!\p{L})/#) {
+                let allowed: Set<String> = switch id {
+                case "dietaryEnergyConsumed": ["kcal", "cal"]
+                case "dietarySodium", "dietaryCholesterol", "dietaryCaffeine": ["mg", "milligram", "milligrams"]
+                default: ["g", "gram", "grams"]
+                }
+                guard allowed.contains(String(unit.output.1)) else { continue }
+            }
             // The words between the number and its neighbors, without a unit right after it.
-            let before = text[..<match.range.lowerBound].split(whereSeparator: \.isNumber).last
+            let before = prefix.split(whereSeparator: \.isNumber).last
                 .map { $0.split { !$0.isLetter }.map(String.init) } ?? []
-            var after = text[match.range.upperBound...].split(whereSeparator: \.isNumber).first
+            var after = suffix.split(whereSeparator: \.isNumber).first
                 .map { $0.split { !$0.isLetter }.map(String.init) } ?? []
-            if text[match.range.upperBound...].first?.isNumber == true { after = [] }
             if ["g", "mg"].contains(after.first ?? "") { after.removeFirst() }
+            // A number already following a nutrient label belongs to that label, not the next one:
+            // "Fat 10g Sodium 350mg" must never verify 10 as sodium. Field separators end that context.
+            let fieldPrefix = prefix.split(whereSeparator: { "|·;,\n".contains($0) }).last.map(String.init) ?? ""
+            let fieldWords = fieldPrefix.split(whereSeparator: \.isNumber).last
+                .map { $0.split { !$0.isLetter }.map(String.init) } ?? []
+            let hasLeadingLabel = nutrientLabels.values.joined().contains { label in
+                let words = label.split(separator: " ").map(String.init)
+                return fieldWords.count >= words.count && Array(fieldWords.suffix(words.count)) == words
+            }
             for label in labels {
                 let words = label.split(separator: " ").map(String.init)
                 let labelBefore = before.count >= words.count && Array(before.suffix(words.count)) == words
-                let labelAfter = after.count >= words.count && Array(after.prefix(words.count)) == words
+                let labelAfter = !hasLeadingLabel && after.count >= words.count && Array(after.prefix(words.count)) == words
                 guard labelBefore || labelAfter else { continue }
                 if id == "dietaryFatTotal", label == "fat" {
                     let previous = labelBefore ? before.dropLast().last : after.dropFirst().first

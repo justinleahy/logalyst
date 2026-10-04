@@ -5,9 +5,9 @@ import SwiftData
 // Siri and Shortcuts actions for saved foods, recipes and recent meals. iPhone only: saved foods and recipes are
 // kept by the iPhone app, and the Watch doesn't have them.
 
-/// A saved food or recipe, for Siri and Shortcuts. It's identified by its name (and brand) and when it was created,
-/// which iCloud brings to the user's other iPhones with it, so a shortcut keeps working there, and two foods with
-/// the same name are each offered and each logged as themselves.
+/// A saved food or recipe, for Siri and Shortcuts. It's identified by the record's permanent ID, which iCloud brings
+/// to the user's other iPhones with it, so a shortcut keeps working there, and two foods with the same name are
+/// each offered and each logged as themselves.
 struct SavedFoodEntity: AppEntity {
     let id: String
     let name: String
@@ -22,70 +22,37 @@ struct SavedFoodEntity: AppEntity {
                               image: .init(systemName: isRecipe ? "book.closed" : "fork.knife"))
     }
 
-    /// Pass an `id` to keep the one a shortcut was saved with, which may differ slightly from this record's.
+    /// Every food has an ID once `SavedFoodQuery` has fetched it; one without matches nothing.
     @MainActor
-    init(_ food: Food, id: String? = nil) {
-        self.id = id ?? Self.identifier(Self.key(food: food), created: food.created)
+    init(_ food: Food) {
+        id = food.uuid?.uuidString ?? ""
         name = food.name
         detail = food.summary
         isRecipe = false
     }
 
     @MainActor
-    init(_ recipe: Recipe, id: String? = nil) {
-        self.id = id ?? Self.identifier(Self.key(recipe: recipe), created: recipe.created)
+    init(_ recipe: Recipe) {
+        id = recipe.uuid?.uuidString ?? ""
         name = recipe.name
         detail = recipe.summary
         isRecipe = true
     }
 
-    private static let separator: Character = "\u{1F}"
-
-    @MainActor
-    private static func key(food: Food) -> String {
-        ["food", food.name.lowercased(), food.brand.lowercased()].joined(separator: String(separator))
-    }
-
-    @MainActor
-    private static func key(recipe: Recipe) -> String {
-        ["recipe", recipe.name.lowercased()].joined(separator: String(separator))
-    }
-
-    /// The key, then the creation time in milliseconds.
-    private static func identifier(_ key: String, created: Date) -> String {
-        key + String(separator) + String(Int64((created.timeIntervalSince1970 * 1000).rounded()))
-    }
-
-    /// Which of these records, in `SavedFoodQuery`'s order, an ID is: the one with the same key created closest to
-    /// its time. iCloud may keep that time less precisely than this iPhone, so it needn't match exactly, but one
-    /// created a second or more apart is a different record. Nil if there's none, such as after it was deleted or
-    /// renamed.
-    private static func match<Record>(_ id: String, in records: [Record], key: (Record) -> String,
-                                      created: (Record) -> Date) -> Record? {
-        guard let split = id.lastIndex(of: separator), let milliseconds = Int64(id[id.index(after: split)...]) else {
-            return nil
-        }
-        let (wanted, time) = (String(id[..<split]), Date(timeIntervalSince1970: Double(milliseconds) / 1000))
-        var best: (record: Record, gap: TimeInterval)?
-        for record in records where key(record) == wanted {
-            let gap = abs(created(record).timeIntervalSince(time))
-            if gap < min(1, best?.gap ?? 1) { best = (record, gap) }
-        }
-        return best?.record
-    }
-
+    /// The food with exactly this ID. Nil if there's none, such as after it was deleted: another food with the same
+    /// name is never used instead.
     @MainActor
     static func food(for id: String, in foods: [Food]) -> Food? {
-        match(id, in: foods, key: key(food:), created: \.created)
+        UUID(uuidString: id).flatMap { uuid in foods.first { $0.uuid == uuid } }
     }
 
     @MainActor
     static func recipe(for id: String, in recipes: [Recipe]) -> Recipe? {
-        match(id, in: recipes, key: key(recipe:), created: \.created)
+        UUID(uuidString: id).flatMap { uuid in recipes.first { $0.uuid == uuid } }
     }
 
-    /// The saved food or recipe this stands for: one serving of it, and how to mark it as just logged. Nil if it
-    /// was deleted or renamed.
+    /// The saved food or recipe this stands for, as it is now: one serving of it, and how to mark it as just logged.
+    /// Nil if it was deleted.
     @MainActor
     func resolve(in context: ModelContext) -> (portion: FoodPortion, markLogged: () -> Void)? {
         if isRecipe {
@@ -105,8 +72,8 @@ struct SavedFoodQuery: EntityStringQuery {
         let context = HealthLoggerApp.sharedContainer.mainContext
         let (foods, recipes) = (Self.foods(in: context), Self.recipes(in: context))
         return identifiers.compactMap { id in
-            if let food = SavedFoodEntity.food(for: id, in: foods) { return SavedFoodEntity(food, id: id) }
-            return SavedFoodEntity.recipe(for: id, in: recipes).map { SavedFoodEntity($0, id: id) }
+            if let food = SavedFoodEntity.food(for: id, in: foods) { return SavedFoodEntity(food) }
+            return SavedFoodEntity.recipe(for: id, in: recipes).map(SavedFoodEntity.init)
         }
     }
 
@@ -131,7 +98,7 @@ struct SavedFoodQuery: EntityStringQuery {
         let context = HealthLoggerApp.sharedContainer.mainContext
         let entities = Self.foods(in: context).map { SavedFoodEntity($0) }
             + Self.recipes(in: context).map { SavedFoodEntity($0) }
-        // Records created in the same millisecond have the same ID, which finds the first of them.
+        // Two records share an ID only if iCloud duplicated one; the first is offered, which is also the one found.
         var seen: Set<String> = []
         return entities.filter { seen.insert($0.id).inserted }
     }
@@ -139,7 +106,7 @@ struct SavedFoodQuery: EntityStringQuery {
     /// Saved foods: favorites, then the most recently logged, then by name.
     @MainActor
     static func foods(in context: ModelContext) -> [Food] {
-        ((try? context.fetch(FetchDescriptor<Food>())) ?? []).sorted { a, b in
+        identify((try? context.fetch(FetchDescriptor<Food>())) ?? [], uuid: \.uuid, in: context).sorted { a, b in
             if a.isFavorite != b.isFavorite { return a.isFavorite }
             let (dateA, dateB) = (a.lastLogged ?? .distantPast, b.lastLogged ?? .distantPast)
             if dateA != dateB { return dateA > dateB }
@@ -151,10 +118,23 @@ struct SavedFoodQuery: EntityStringQuery {
     /// Recipes, most recently logged first.
     @MainActor
     static func recipes(in context: ModelContext) -> [Recipe] {
-        ((try? context.fetch(FetchDescriptor<Recipe>())) ?? []).sorted { a, b in
+        identify((try? context.fetch(FetchDescriptor<Recipe>())) ?? [], uuid: \.uuid, in: context).sorted { a, b in
             let (dateA, dateB) = (a.lastLogged ?? .distantPast, b.lastLogged ?? .distantPast)
             return dateA != dateB ? dateA > dateB : a.created < b.created
         }
+    }
+
+    /// Gives each record without a permanent ID (saved before 1.1, or on an iPhone still on 1.0) one, and saves it
+    /// right away, so a shortcut made with it finds it again.
+    @MainActor
+    private static func identify<Record: PersistentModel>(
+        _ records: [Record], uuid: ReferenceWritableKeyPath<Record, UUID?>, in context: ModelContext
+    ) -> [Record] {
+        let unidentified = records.filter { $0[keyPath: uuid] == nil }
+        guard !unidentified.isEmpty else { return records }
+        for record in unidentified { record[keyPath: uuid] = UUID() }
+        try? context.save()
+        return records
     }
 }
 
@@ -216,14 +196,13 @@ struct LogFoodIntent: AppIntent {
         }
         var portion = saved.portion
         portion.servings = servings
-        portion.weightUnit = nil
+        portion.enter(in: nil)
         let meal = meal?.meal ?? Meal(at: .now)
         let health = await HealthStore.standalone()
         try await health.saveFoods([portion], meal: meal, date: .now)
         saved.markLogged()
         try? context.save()
-        let calories = portion.calories.formatted(.number.precision(.fractionLength(0)))
-        return .result(dialog: "Logged \(portion.amountText) of \(portion.name), \(calories) kcal, at \(meal.title.lowercased()).")
+        return .result(dialog: "Logged \(portion.amountText) of \(portion.name), \(portion.calorieSummary), at \(meal.title.lowercased()).")
     }
 }
 
@@ -260,8 +239,11 @@ struct LogRecentMealIntent: AppIntent {
         Food.markLogged(last.foods, among: (try? context.fetch(FetchDescriptor<Food>())) ?? [])
         try? context.save()
         let names = last.foods.map(\.name).formatted(.list(type: .and))
-        let calories = last.foods.map(\.calories).reduce(0, +).formatted(.number.precision(.fractionLength(0)))
-        return .result(dialog: "Logged \(meal.title.lowercased()) from \(last.dayText.lowercased()) again: \(names), \(calories) kcal.")
+        let coverage = FoodNutrition.coverage(of: "dietaryEnergyConsumed", in: last.foods)
+        let calories = FoodNutrition.totals(last.foods)["dietaryEnergyConsumed"].map {
+            "\($0.formatted(.number.precision(.fractionLength(0)))) kcal" + (coverage.missing > 0 ? ", partial" : (coverage.isUncertain ? ", coverage unknown" : ""))
+        } ?? "calories unavailable"
+        return .result(dialog: "Logged \(meal.title.lowercased()) from \(last.dayText.lowercased()) again: \(names), \(calories).")
     }
 }
 

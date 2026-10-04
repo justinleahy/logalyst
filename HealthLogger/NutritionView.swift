@@ -6,6 +6,7 @@ struct NutritionView: View {
     @Environment(HealthStore.self) private var health
     @Environment(NutritionGoals.self) private var goals
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     /// Last `trendDays` of totals per metric, oldest first, so `.last` is today.
     @State private var totals: [Metric: [DailyTotal]] = [:]
@@ -83,17 +84,28 @@ struct NutritionView: View {
             let total = today(water, in: option)
             let goal = goals.goal(for: water, in: option) ?? 0
             Section("Water") {
-                HStack(spacing: 20) {
-                    ProgressRing(progress: goal > 0 ? total / goal : 0, tint: .cyan, systemImage: "drop.fill")
-                        .frame(width: 96, height: 96)
+                let layout = dynamicTypeSize.isAccessibilitySize
+                    ? AnyLayout(VStackLayout(alignment: .leading, spacing: 20))
+                    : AnyLayout(HStackLayout(spacing: 20))
+                layout {
+                    ProgressRing(progress: goal > 0 ? total / goal : 0, tint: .cyan, systemImage: "drop.fill",
+                                 hasData: todayData(water)?.hasRecordedData == true)
+                        .frame(width: dynamicTypeSize.isAccessibilitySize ? 160 : 96,
+                               height: dynamicTypeSize.isAccessibilitySize ? 160 : 96)
+                        .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : nil)
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(option.format(total))
+                        Text(todayData(water)?.hasRecordedData == true ? option.format(total) : "No recorded data available")
                             .font(.title.bold().monospacedDigit())
+                            .fixedSize(horizontal: false, vertical: true)
                         Text("of \(option.format(goal))")
                             .foregroundStyle(.secondary)
-                        GoalStatus(total: total, goal: goal, isLimit: false, option: option)
+                            .fixedSize(horizontal: false, vertical: true)
+                        GoalStatus(total: total, goal: goal, isLimit: false, option: option,
+                                   hasData: todayData(water)?.hasRecordedData == true)
                             .font(.subheadline)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .padding(.vertical, 8)
                 NavigationLink("Log Water", value: water)
@@ -129,23 +141,21 @@ struct NutritionView: View {
                 Section {
                     ForEach(entries) { entry in
                         NavigationLink(value: entry) {
-                            HStack {
-                                VStack(alignment: .leading) {
-                                    Text(entry.title)
-                                    Text(entry.date, style: .time).font(.caption).foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                Text(entry.valueText).monospacedDigit().foregroundStyle(.secondary)
-                            }
+                            foodRow(entry)
                         }
                         .logAgainActions(entry, in: health) { self.error = $0 }
                     }
                     .onDelete { offsets in delete(offsets.map { entries[$0] }) }
                 } header: {
-                    HStack {
+                    let layout = dynamicTypeSize.isAccessibilitySize
+                        ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+                        : AnyLayout(HStackLayout())
+                    layout {
                         Label(meal.title, systemImage: meal.systemImage)
-                        Spacer()
-                        Text(calories(of: entries)).monospacedDigit()
+                        if !dynamicTypeSize.isAccessibilitySize { Spacer() }
+                        Text(calories(of: entries))
+                            .monospacedDigit()
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }
@@ -188,21 +198,46 @@ struct NutritionView: View {
         }
     }
 
+    private func foodRow(_ entry: LoggedEntry) -> some View {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6))
+            : AnyLayout(HStackLayout())
+        return layout {
+            VStack(alignment: .leading) {
+                Text(entry.title).fixedSize(horizontal: false, vertical: true)
+                Text(entry.date, style: .time).font(.caption).foregroundStyle(.secondary)
+            }
+            if !dynamicTypeSize.isAccessibilitySize { Spacer() }
+            Text(entry.valueText)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     private func calories(of entries: [LoggedEntry]) -> String {
-        let total = entries.compactMap(\.food?.calories).reduce(0, +)
-        return "\(total.formatted(.number.precision(.fractionLength(0)))) kcal"
+        let foods = entries.compactMap(\.food)
+        let coverage = FoodNutrition.coverage(of: "dietaryEnergyConsumed", in: foods)
+        guard let total = FoodNutrition.totals(foods)["dietaryEnergyConsumed"] else { return "Calories unavailable" }
+        let suffix = coverage.missing > 0 ? " · Partial" : (coverage.isUncertain ? " · Recorded" : "")
+        return "\(total.formatted(.number.precision(.fractionLength(0)))) kcal\(suffix)"
     }
 
     private func nutrientSection(_ title: String, metrics: [Metric]) -> some View {
-        Section(title) {
+        Section {
             ForEach(metrics) { metric in
                 if let option = health.unitOption(for: metric) {
                     NavigationLink(value: metric) {
-                        NutrientRow(metric: metric, option: option, total: today(metric, in: option),
+                        NutrientRow(metric: metric, option: option, day: todayData(metric),
                                     goal: goals.goal(for: metric, in: option))
                     }
                 }
             }
+        } header: {
+            Text(title)
+        } footer: {
+            Text("Totals include available intake recorded in Health by all apps. Missing or unreadable data is not zero. A recorded total cannot establish that the day's intake is complete.")
         }
     }
 
@@ -221,23 +256,27 @@ struct NutritionView: View {
 
     // MARK: Data
 
+    private func todayData(_ metric: Metric) -> DailyTotal? {
+        totals[metric]?.last.flatMap { Calendar.current.isDateInToday($0.day) ? $0 : nil }
+    }
+
     private func today(_ metric: Metric, in option: UnitOption) -> Double {
-        totals[metric]?.last?.value(in: option) ?? 0
+        todayData(metric)?.value(in: option) ?? 0
     }
 
     private func reload() async {
+        waterToday.removeAll { !Calendar.current.isDateInToday($0.date) }
+        foodToday.removeAll { !Calendar.current.isDateInToday($0.date) }
         do {
-            var loaded: [Metric: [DailyTotal]] = [:]
-            for metric in Self.intake {
-                loaded[metric] = try await health.dailyTotals(for: metric, days: Self.trendDays)
-            }
-            totals = loaded
+            totals = try await health.dailyNutritionTotals(for: Self.intake, days: Self.trendDays)
             let today = Calendar.current.startOfDay(for: .now)
             waterToday = try await health.recentEntries(of: [Self.water], includingFoods: false, since: today)
-            foodToday = try await health.recentEntries(of: [], since: today)
+            foodToday = try await health.recentEntries(of: [], since: today, limit: nil)
         } catch where error.isHealthDataLocked {
-            // Keep what's showing; this reloads once the phone is unlocked.
+            // A failed query cannot establish today's intake. Retry when the phone unlocks.
+            totals = [:]
         } catch {
+            totals = [:]
             self.error = error.healthMessage
         }
     }
@@ -259,24 +298,33 @@ private struct ProgressRing: View {
     let progress: Double
     let tint: Color
     let systemImage: String
+    var hasData = true
 
     var body: some View {
         ZStack {
             Circle().stroke(tint.opacity(0.2), lineWidth: 12)
             Circle()
-                .trim(from: 0, to: min(progress, 1))
+                .trim(from: 0, to: hasData ? min(progress, 1) : 0)
                 .stroke(tint, style: StrokeStyle(lineWidth: 12, lineCap: .round))
                 .rotationEffect(.degrees(-90))
             VStack(spacing: 2) {
                 Image(systemName: systemImage).foregroundStyle(tint)
-                Text(progress, format: .percent.precision(.fractionLength(0)))
+                Group {
+                    if hasData {
+                        Text(progress, format: .percent.precision(.fractionLength(0)))
+                    } else {
+                        Text("—")
+                    }
+                }
                     .font(.headline.monospacedDigit())
             }
         }
         .animation(.easeOut, value: progress)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Progress toward goal")
-        .accessibilityValue(Text(progress, format: .percent.precision(.fractionLength(0))))
+        .accessibilityValue(hasData
+            ? Text(progress, format: .percent.precision(.fractionLength(0)))
+            : Text("Unavailable: no recorded data"))
     }
 }
 
@@ -286,12 +334,18 @@ private struct GoalStatus: View {
     let goal: Double
     let isLimit: Bool
     let option: UnitOption
+    var hasData = true
+    var isPartial = false
 
     var body: some View {
         let difference = goal - total
-        if isLimit {
+        if !hasData {
+            Text("Goal status unavailable").foregroundStyle(.secondary)
+        } else if isPartial {
+            Text("Partial total · goal status unavailable").foregroundStyle(.secondary)
+        } else if isLimit {
             if difference >= 0 {
-                Text("\(option.format(difference)) left").foregroundStyle(.secondary)
+                Text("Recorded below limit · coverage may be incomplete").foregroundStyle(.secondary)
             } else {
                 Label("\(option.format(-difference)) over", systemImage: "exclamationmark.circle.fill")
                     .foregroundStyle(.red)
@@ -299,24 +353,34 @@ private struct GoalStatus: View {
         } else if difference > 0 {
             Text("\(option.format(difference)) to go").foregroundStyle(.secondary)
         } else {
-            Label("Goal reached", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+            Label("Recorded goal reached", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
         }
     }
 }
 
 private struct NutrientRow: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let metric: Metric
     let option: UnitOption
-    let total: Double
+    let day: DailyTotal?
     let goal: Double?
+    private var total: Double { day?.value(in: option) ?? 0 }
+    private var hasData: Bool { day?.hasRecordedData == true }
+    private var stacksAmount: Bool { dynamicTypeSize.isAccessibilitySize || !hasData }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack {
+            let layout = stacksAmount
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+                : AnyLayout(HStackLayout())
+            layout {
                 Label(metric.name, systemImage: metric.systemImage)
-                Spacer()
+                    .fixedSize(horizontal: false, vertical: true)
+                if !stacksAmount { Spacer() }
                 Group {
-                    if let goal {
+                    if !hasData {
+                        Text("No recorded data available")
+                    } else if let goal {
                         Text("\(option.formatNumber(total)) / \(option.format(goal))")
                     } else {
                         Text(option.format(total))
@@ -324,14 +388,20 @@ private struct NutrientRow: View {
                 }
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             }
-            if let goal, goal > 0, let dailyGoal = metric.dailyGoal {
+            if let day, day.isPartial {
+                Text("Partial · \(day.coverageText)").font(.caption).foregroundStyle(.secondary)
+            }
+            if let goal, goal > 0, let dailyGoal = metric.dailyGoal, hasData {
                 ProgressView(value: min(total, goal), total: goal)
-                    .tint(dailyGoal.tint(forProgress: total / goal))
-                GoalStatus(total: total, goal: goal, isLimit: dailyGoal.isLimit, option: option)
+                    .tint(day?.isPartial == true || dailyGoal.isLimit ? .secondary : dailyGoal.tint(forProgress: total / goal))
+                GoalStatus(total: total, goal: goal, isLimit: dailyGoal.isLimit, option: option,
+                           hasData: hasData, isPartial: day?.isPartial == true)
                     .font(.caption)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 2)
     }
 }
@@ -346,15 +416,15 @@ private struct TrendChart: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if let average {
-                Text("Daily average: \(option.format(average))")
+                Text("Recorded daily average: \(option.format(average))")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
             Chart {
-                ForEach(days) { day in
+                ForEach(days.filter(\.hasRecordedData)) { day in
                     BarMark(x: .value("Day", day.day, unit: .day),
                             y: .value(metric.name, day.value(in: option)))
-                        .foregroundStyle(tint)
+                        .foregroundStyle(day.isPartial ? tint.opacity(0.5) : tint)
                 }
                 if let goal {
                     RuleMark(y: .value(metric.dailyGoal?.isLimit == true ? "Limit" : "Goal", goal))
@@ -373,6 +443,12 @@ private struct TrendChart: View {
                 }
             }
             .frame(height: 180)
+            if days.contains(where: \.isPartial) {
+                Text("Partial totals include only available nutrition.").font(.caption).foregroundStyle(.secondary)
+            }
+            if days.allSatisfy({ !$0.hasRecordedData }) {
+                Text("No recorded data available").foregroundStyle(.secondary)
+            }
         }
         .padding(.vertical, 8)
     }

@@ -12,6 +12,8 @@ final class Food {
     /// What one serving weighs in grams, so the food can be logged by weight. Nil when it isn't known, as for foods
     /// saved before 1.1 or known only by volume. Added in 1.1, so it's optional for older records and iCloud.
     @Attribute(.allowsCloudEncryption) var gramsPerServing: Double?
+    /// Explicit serving volume in mL; optional so older local and iCloud records remain usable.
+    @Attribute(.allowsCloudEncryption) var millilitersPerServing: Double?
     @Attribute(.allowsCloudEncryption) var barcode: String?
     /// Amount per serving keyed by metric ID, in each metric's first unit option (kcal, g, mg).
     @Attribute(.allowsCloudEncryption) var nutrients: [String: Double] = [:]
@@ -19,8 +21,13 @@ final class Food {
     @Attribute(.allowsCloudEncryption) var lastLogged: Date?
     /// Favorites sort to the top of My Foods.
     @Attribute(.allowsCloudEncryption) var isFavorite = false
+    /// A permanent ID that iCloud syncs with the food, so a shortcut made on any of the user's iPhones logs this
+    /// food and no other. Added in 1.1, so it's optional: older foods, and those saved on an iPhone still on 1.0,
+    /// get one when Siri and Shortcuts first look for them (see `SavedFoodQuery`).
+    @Attribute(.allowsCloudEncryption) var uuid: UUID?
 
     init(_ draft: FoodDraft) {
+        uuid = UUID()
         update(from: draft)
     }
 
@@ -28,21 +35,24 @@ final class Food {
         name = draft.name.trimmingCharacters(in: .whitespaces)
         brand = draft.brand.trimmingCharacters(in: .whitespaces)
         servingSize = draft.servingSize.trimmingCharacters(in: .whitespaces)
-        gramsPerServing = draft.gramsPerServing.flatMap { $0 > 0 ? $0 : nil }
+        gramsPerServing = draft.gramsPerServing.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
+        millilitersPerServing = draft.millilitersPerServing.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
         barcode = draft.barcode
-        nutrients = draft.nutrients.filter { $0.value > 0 }
+        nutrients = draft.nutrients.filter { $0.value.isFinite && $0.value >= 0 }
     }
 
     var draft: FoodDraft {
         FoodDraft(name: name, brand: brand, servingSize: servingSize, gramsPerServing: gramsPerServing,
-                  barcode: barcode, nutrients: nutrients)
+                  millilitersPerServing: millilitersPerServing, barcode: barcode, nutrients: nutrients)
     }
 
     /// One serving, ready to log. A food whose serving is just a weight, like "100 g", starts out entered in grams.
     var portion: FoodPortion {
         FoodPortion(name: name, brand: brand, servingSize: servingSize, nutrients: nutrients,
                     gramsPerServing: gramsPerServing,
-                    weightUnit: gramsPerServing != nil && ServingWeight.isWeightOnly(servingSize) ? .grams : nil)
+                    weightUnit: gramsPerServing != nil && ServingWeight.isWeightOnly(servingSize) ? .grams : nil,
+                    millilitersPerServing: millilitersPerServing,
+                    volumeUnit: millilitersPerServing != nil && ServingVolume.isVolumeOnly(servingSize) ? .milliliters : nil)
     }
 
     /// "Brand · 1 cup · 150 kcal", skipping whatever is missing.
@@ -61,12 +71,15 @@ struct FoodDraft: Hashable {
     var servingSize = ""
     /// Grams per serving, when known.
     var gramsPerServing: Double?
+    /// Explicit mL per serving, never inferred from weight or a food photo.
+    var millilitersPerServing: Double?
     var barcode: String?
     var nutrients: [String: Double] = [:]
     var source = Source.manual
 
     var isValid: Bool {
-        !name.trimmingCharacters(in: .whitespaces).isEmpty && nutrients.values.contains { $0 > 0 }
+        !name.trimmingCharacters(in: .whitespaces).isEmpty
+            && nutrients.values.contains { $0.isFinite && $0 >= 0 }
     }
 
     /// A weight the serving size states in grams, to offer when the food has none yet. Not offered for the
@@ -75,6 +88,12 @@ struct FoodDraft: Hashable {
     var statedServingWeight: Double? {
         guard gramsPerServing == nil, !(barcode != nil && servingSize == FoodDatabase.per100Serving) else { return nil }
         return ServingWeight.grams(in: servingSize)
+    }
+
+    /// An unambiguous volume from existing text is offered for review, never silently applied to old foods.
+    var statedServingVolume: Double? {
+        guard millilitersPerServing == nil else { return nil }
+        return ServingVolume.milliliters(in: servingSize)
     }
 }
 
@@ -149,6 +168,7 @@ enum FoodDatabase {
         if perServing {
             draft.servingSize = servingSize
             draft.gramsPerServing = servingWeight(printed: servingSize, in: product)
+            draft.millilitersPerServing = servingVolume(printed: servingSize, in: product)
         } else {
             // Open Food Facts gives these per 100 g, or per 100 mL for liquids. Only a product known to be sold by
             // weight gets a 100 g serving weight; a drink mustn't.
@@ -158,6 +178,7 @@ enum FoodDatabase {
                 draft.gramsPerServing = 100
             case .milliliters?:
                 draft.servingSize = "100 mL"
+                draft.millilitersPerServing = 100
             case nil:
                 draft.servingSize = per100Serving
             }
@@ -193,29 +214,56 @@ enum FoodDatabase {
         }
     }
 
-    private enum Per100Unit { case grams, milliliters }
+    /// Only a stated volume is usable. Bare fluid ounces and conflicting database/text amounts wait for
+    /// review in the editor; neither the package's weight nor an assumed density can supply a conversion.
+    private static func servingVolume(printed: String, in product: [String: Any]) -> Double? {
+        let listed: Double?
+        if let quantity = number(product["serving_quantity"]), quantity > 0,
+           let unit = product["serving_quantity_unit"] as? String {
+            listed = ServingVolume.milliliters(in: "\(quantity) \(unit)")
+        } else {
+            listed = nil
+        }
+        switch ServingVolume.reading(of: printed) {
+        case .unstated:
+            return listed
+        case .milliliters(let milliliters):
+            if let listed, abs(listed - milliliters) > max(0.5, milliliters * 0.01) { return nil }
+            return milliliters
+        case .ambiguous:
+            return nil
+        }
+    }
+
+    private enum Per100Unit: Equatable { case grams, milliliters }
 
     /// Whether a product's per-100 amounts are per 100 g or 100 mL, from the unit its package size is in.
     /// Nil when that isn't clear.
     private static func per100Unit(of product: [String: Any]) -> Per100Unit? {
-        switch (product["product_quantity_unit"] as? String)?.lowercased() {
-        case "g", "kg": return .grams
-        case "ml", "cl", "dl", "l": return .milliliters
-        default: break
+        let listed: Per100Unit?
+        switch (product["product_quantity_unit"] as? String)?.trimmingCharacters(in: .whitespaces).lowercased() {
+        case "g", "kg": listed = .grams
+        case "ml", "cl", "dl", "l": listed = .milliliters
+        default: listed = nil
         }
         let quantity = (product["quantity"] as? String)?.lowercased() ?? ""
-        let isVolume = quantity.contains(#/\d\s*(ml|cl|dl|l|fl\.?\s*oz)\b/#)
+        // Identifying this as a liquid does not require converting the package's fluid ounces: Open Food
+        // Facts expresses its per-100 liquid column in mL. Conflicting package evidence establishes neither.
+        let isVolume = quantity.contains(#/\d\s*(?:(?:u\.?s\.?|imperial|u\.?k\.?)\s+)?(ml|cl|dl|l|fl\.?\s*oz|fluid\s+ounces?)\b/#)
         let isWeight = quantity.contains(#/\d\s*(g|kg)\b/#)
-        if isWeight != isVolume { return isWeight ? .grams : .milliliters }
-        return nil
+        guard !(isWeight && isVolume) else { return nil }
+        let printed: Per100Unit? = isWeight ? .grams : isVolume ? .milliliters : nil
+        if let listed, let printed, listed != printed { return nil }
+        return listed ?? printed
     }
 
     private static func number(_ value: Any?) -> Double? {
-        switch value {
+        let number: Double? = switch value {
         case let number as NSNumber: number.doubleValue
         case let string as String: Double(string)
         default: nil
         }
+        return number.flatMap { $0.isFinite && $0 >= 0 ? $0 : nil }
     }
 }
 

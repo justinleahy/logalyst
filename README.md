@@ -32,7 +32,9 @@ iPhones that have used Logalyst before go straight to the app.
 - **Nutrition** tab tracks today's water against a daily goal (with a progress ring and a
   list of today's water to tap and fix or swipe away), shows calories, macros, sugar, fiber, cholesterol, sodium and caffeine against daily
   targets or limits, and charts any intake metric over the last 7 days. Totals include data other apps
-  save to Health. Tap the target button to edit goals.
+  save to Health. An explicitly recorded zero is shown as zero; no recorded value is unavailable. Known
+  omissions in logged foods make a total partial. Older and other-app records can leave coverage unknown,
+  so a recorded total does not establish that the day's intake is complete. Tap the target button to edit goals.
 - **Log reminders:** in **Options → Log Reminders**, add a reminder for any metric, such as water, blood pressure
   or weight. Each one comes at set times of day, or whenever you haven't logged the metric for a while (1 to 12
   hours) between the times you pick. They repeat every so many days, on chosen weekdays every so many weeks, or on
@@ -68,36 +70,56 @@ iPhones that have used Logalyst before go straight to the app.
   [Open Food Facts](https://world.openfoodfacts.org), a free, open food database (its data is under the
   [Open Database License](https://opendatacommons.org/licenses/odbl/1-0/), which the editor links to). You can
   also type the number if the camera can't read it. Saved foods are kept on the iPhone and synced through iCloud (see below).
+- **Food by volume:** add an explicit **Serving Volume** in the food editor, then log measured portions in mL,
+  U.S. fluid ounces or Imperial fluid ounces. For a food defined per 100 mL, 180 mL logs 1.8 times each known
+  nutrient. Changing the volume unit keeps the physical amount. U.S. and Imperial fluid ounces have different
+  sizes and are separate from weight ounces. Barcode, label and published-nutrition imports retain a compatible,
+  explicitly stated volume; ambiguous fluid ounces require review. Volume never supplies a guessed weight,
+  a per-100-g column is never treated as per-100-mL, and a photo estimate never establishes a measured volume.
+  Existing foods gain no automatic volume conversion; enter a volume or accept a stated volume after review.
+- **Missing nutrition:** leave a field blank when its value is unavailable; enter **0** when zero is stated.
+  Both survive saving, logging and editing. Meal and recipe summaries total the known values and show missing
+  ingredient counts for each nutrient, excluding omitted and zero-portion ingredients. An entirely unknown
+  nutrient is unavailable; a subtotal with missing ingredients is partial. Recipes preserve that coverage
+  when logged as one food. *Estimate* and *Published* still describe the source, not completeness or accuracy.
+  Daily totals, widgets and spoken summaries avoid calling missing or partial data a completed goal.
+  A food needs at least one known nutrient (which can be zero) to log directly. If a meal contains an entirely
+  unknown food, add nutrition, leave it out, or save the meal as a recipe alongside ingredients with known
+  nutrition; the recipe keeps the unknown ingredient's missing-nutrition indicators.
 - **Nutrition labels:** *Scan Nutrition Label* (in the Nutrition tab, or under ＋ in Add Food) photographs a
   nutrition facts panel, or reads a photo you choose, and fills in a new food from it: the serving size and each
   nutrient it lists. Tap *Scan Label* in the food editor to fill in a food you're already making, such as one
   whose barcode isn't in Open Food Facts. Scanning a label for a different serving size replaces all the food's
   nutrition, so an amount the scan misses is left empty rather than kept from the old serving. Text is read on the iPhone with Apple's Vision framework, and photos
-  aren't kept. It reads US, Canadian and European labels. For European ones it uses the per 100 g column, scaled
-  to the serving size when the label gives one in grams (or mL for drinks), and works out sodium from salt. Check
+  aren't kept. It reads US, Canadian and European labels. For European ones it uses the per-100-g or per-100-mL
+  column, scaled only to a serving with the same physical basis, and works out sodium from salt. Check
   the amounts before saving, since print can be misread.
 - **Logging food again:** *Add Food* starts with your recent meals (two or more foods at the same meal) and the
   foods you've logged in the last 30 days. Tap ⊕ to log one again now, as much as last time, or tap the row to
-  change the servings or weight, meal or time first (a meal lets you add, replace or leave out foods). Swipe
+  change the servings, weight or volume, meal or time first (a meal lets you add, replace or leave out foods). Swipe
   right on a food in History or the Nutrition tab (or touch and hold it) to log it again, and swipe right on a
   saved food to make it a favorite, which keeps it at the top of My Foods. Recents come from Health, which also
-  stores each entry's servings, serving size, serving weight, brand and meal, so they work even after the saved
+  stores each entry's servings, serving size, weight or volume basis, selected unit, nutrition coverage, brand
+  and meal, so they work even after the saved
   food is deleted. A food logged before it had a serving weight picks one up when logged again only if its saved
   food has the same name, brand, serving size and nutrition.
 - **Meals:** *New Meal* (in the Nutrition tab, or under ＋ in Add Food) starts a meal from several saved foods
   without making a recipe first. On any meal screen (a new meal, a recent meal or a photo of a meal) you can add
-  a food you missed, swipe left on one to replace it with one of your foods (a weight stays the same weight, and a
-  count like 3 eggs stays 3), change amounts by the serving or weight, leave foods out, and save the meal as a
-  recipe. The totals shown are what's logged.
-- **Editing logged food:** tap a food in History or the Nutrition tab to change its servings (or weight, if it was
-  logged with one), meal, or date and time. Its nutrition per serving comes from the entry itself, so editing or
+  a food you missed, swipe left on one to replace it with one of your foods, change amounts by the serving,
+  weight or volume, leave foods out, and save the meal as a recipe. A measured amount stays the same when the
+  replacement has a compatible basis; otherwise confirm a serving amount. The totals and coverage shown are
+  what's logged.
+- **Editing logged food:** tap a food in History or the Nutrition tab to change its servings, weight or volume
+  when the entry carries that basis, meal, or date and time. Its nutrition and coverage come from the entry
+  itself, so editing or
   deleting the saved food doesn't change it, and editing it doesn't change the saved food or recipe.
 - **Photo of Meal** (iOS 27 or later with Apple Intelligence on): take or choose a photo of a meal, optionally
   add details the photo can't show ("double chicken, no sour cream"), and Apple Intelligence's on-device model
   lists each food and drink with the amount shown and its estimated calories, macros, sugar, fiber and caffeine.
-  Foods named like one of your saved foods or recipes use your nutrition instead (and a saved food's serving
-  weight). Check and correct them on the meal screen (add or replace foods, change amounts, leave foods out, meal
-  and time) before logging, or save them as a recipe. A photo from your library is logged at the time it was
+  Foods named like one of your saved foods or recipes use your nutrition instead (and a saved food's known
+  serving weight or volume). Unknown estimates remain blank rather than becoming zero. Check and correct them
+  on the meal screen (add or replace foods, change amounts, leave foods out, meal and time) before logging,
+  or save them as a recipe. A photo from your library is logged at the time it was
   taken. Without a restaurant or brand nothing leaves the iPhone, and the button only appears where the model is
   available. Each food from a photo is marked *Estimate*, in the meal and once it's logged.
 - **Restaurant and brand nutrition:** give a photo of a meal the restaurant or brand it's from, such as Chipotle,
@@ -108,14 +130,15 @@ iPhones that have used Logalyst before go straight to the app.
   web view that keeps no cookies and blocks advertising, analytics and session-recording services and other
   companies' images and frames. Links that lead to the nutrition, such as Chipotle's *Full Nutrition Facts* PDF,
   are followed, as are nutrition pages in the site's sitemap, preferring ones for your country. Nutrition tables
-  are read directly (one food per row, columns named by the header, servings as text or grams); other text, such
-  as a menu page, is read by the on-device model, keeping only values printed beside their nutrient's name that
+  are read directly (one food per row, columns named by the header, servings as text, grams or explicit volume);
+  other text, such as a menu page, is read by the on-device model, keeping only values printed beside their nutrient's name that
   add up (calories against fat, carbohydrates and protein). Only the brand's name leaves the iPhone; the foods are
   looked for in what's read. A clear match uses the published values per serving, scaled in the app by the
   portions from the photo and details (double chicken is exactly twice each value), and is marked *Published per
   4 oz* (or whatever the serving is), with its source linked under *Sources* with its website and the date it was
-  read. Nutrients a source doesn't publish stay unknown, and a gram serving weight is kept only when the source
-  gives one. A food that fits several published ones (rice: white or brown?) isn't counted until you *Choose*,
+  read. Nutrients a source doesn't publish stay unknown; published zeros stay zero. Serving weight and volume
+  are kept only when the source explicitly supplies a compatible basis. A food that fits several published ones
+  (rice: white or brown?) isn't counted until you *Choose*,
   and one the model thinks may be hidden under the others isn't counted unless you *Include* it. Foods the brand
   doesn't list fall back to the estimate, as does everything if the lookup fails (offline, the site doesn't
   answer), with *Try Again*; if nothing is found, the brand's nutrition pages are linked. A saved food with the
@@ -125,24 +148,31 @@ iPhones that have used Logalyst before go straight to the app.
   read is cached on the iPhone for 24 hours. Checked on October 3, 2026, Chipotle, Panera, Five Guys and Subway
   publish nutrition this can read; sites that build their nutrition only inside an interactive calculator (Taco
   Bell, Wendy's) or lay their PDF out in separate blocks (Qdoba) fall back to estimates with links.
-- **Recipes:** in *Add Food*, tap ＋ and *New Recipe* to combine servings (or weights) of saved foods into a dish,
+- **Recipes:** in *Add Food*, tap ＋ and *New Recipe* to combine servings, weights or volumes of saved foods into a dish,
   and say how many servings it makes. It's logged by the serving like any food (e.g. "1/4 recipe"); its own
-  weight isn't worked out from its ingredients'. It's saved to Health as one food entry with the per-serving
-  nutrition, so it shows in Recent and can be logged again. You can also save a meal as a recipe from its screen.
-  Ingredients are copies, so editing or deleting a saved food later doesn't change recipes made with it. An
-  iPhone still on 1.0 that edits a recipe keeps its nutrition but drops its ingredients' weights.
+  weight or volume isn't worked out from its ingredients'. It's saved to Health as one food entry with the
+  per-serving nutrition and ingredient coverage, so it shows in Recent and can be logged again. You can also
+  save a meal as a recipe from its screen. Ingredients are copies, so editing or deleting a saved food later
+  doesn't change recipes made with it.
 - **iCloud:** saved foods, recipes and settings (units, goals, favorites, presets, log reminders and Suggest
   Goals answers) sync to the app's private database in the user's iCloud account, with every field end-to-end
   encrypted (CloudKit encrypted values), so they carry over to a new or second iPhone. The most recent edit to
   a setting wins. Without iCloud they stay on the device. Health data is synced by the Health app itself, and the
   Watch still gets its settings from the iPhone.
+- **Older app versions:** an older app can drop volume or coverage metadata when rewriting a food, recipe or
+  logged entry, and may discard explicit zeros. Missing metadata remains unknown and cannot be reconstructed
+  from totals. Review serving bases and missing nutrients after edits on an older device; update both devices
+  to retain the new information. Two-device and mixed-version iCloud behavior still needs physical-device validation.
 - **History** tab lists everything logged from either device; swipe to delete, or tap an entry (food included) to
   fix it. Health can't change a saved entry, so editing saves the corrected one and then deletes the original.
   The edit is noted on the iPhone first, so it can be finished later without saving the correction twice: if the
   original can't be deleted, you can try again right away, or later from History (and the Nutrition tab), which
   lists the unfinished edit with *Remove Original* and *Keep Both*; if the app closes partway, the edit is
   finished the next time it opens, or listed there if it still can't be. Deleting either entry of an unfinished
-  edit finishes it, and *Remove Original* keeps the original if the correction has since been deleted.
+  edit finishes it, and *Remove Original* keeps the original if the correction has since been deleted. Editing
+  the correction of an unfinished edit removes its original first (or, if it still can't, leaves both as they
+  are), and editing the original is refused until the edit is finished or both are kept, so a later edit never
+  leaves an extra entry.
 - **Widgets** (iPhone Home Screen, Lock Screen and Control Center):
   - *Water*: today's water against your goal, with buttons that log a glass without opening the app.
   - *Nutrition*: calories and nutrients against your daily goals. On the Lock Screen it shows a calorie gauge,
@@ -161,8 +191,9 @@ iPhones that have used Logalyst before go straight to the app.
     value and unit, which makes automations like "log 95 mg of caffeine when I arrive at the coffee shop" possible.
   - *Log Food* (iPhone): "Log oatmeal in Logalyst" logs a serving of a saved food or recipe; Siri asks which one
     when a name fits several, like "yogurt". In Shortcuts you can set the servings and the meal (otherwise the usual
-    one for the time). Foods are found by name and when they were made, so a shortcut works on your other iPhones
-    too, and two foods with the same name are offered (and logged) separately.
+    one for the time). Each food and recipe has a permanent ID that iCloud syncs with it, so a shortcut works on
+    your other iPhones and after a rename, two foods with the same name are offered (and logged) separately, and a
+    deleted food is reported rather than replaced by another with its name.
   - *Log Last Meal Again* (iPhone): "Log my last breakfast again in Logalyst" logs the foods from your most recent
     breakfast (or lunch, dinner or snack) before today, in the last 30 days, at the same meal, now.
   - Every phrase has to include the app's name. Siri says what was saved and, for intake, today's total. Like
@@ -202,6 +233,73 @@ iPhones that have used Logalyst before go straight to the app.
    `HealthLogger/NutritionLookup.swift` (caching and matching).
 
 ## Testing
+
+### C6 and C7 implementation validation
+
+Volume portions and missing-nutrition indicators are implemented in source after the uploaded 1.1 (26) build.
+Implementation began October 3, 2026; final simulator checks span October 3–4.
+The latest signed iOS 27.0 unit/HealthKit run passed **201 tests in 28 suites**. Coverage includes conversion
+and import cases, zero versus unknown values, recipe coverage, Health metadata, editing and re-logging,
+daily totals, and migration of a pre-volume SwiftData store on local disk. The Release simulator build also
+passed for the iPhone and Watch apps and both widget targets.
+
+- **UI checks passed:** on iOS 27.0, confirming a serving amount for an incompatible replacement, and logging
+  180 mL with U.S./Imperial conversions while retaining zero/unknown nutrition through Health re-logging.
+  On iOS 26.5, the existing no-weight food and composed-meal regression cases passed, including the 447 kcal
+  meal total and Save as Recipe.
+- **Partial-nutrition UI passed on iOS 26.5:** a 100 mg sodium subtotal shows two missing ingredients, all-unknown
+  fiber is unavailable, exclusions reduce the sodium missing count from two to one to zero, and the saved
+  recipe reopens with its original two missing ingredients.
+- **Visual checks:** default-size volume and partial-nutrition screenshots were reviewed. Nutrition, History
+  and hydration layouts now stack at the largest text size. Populated History rows and the full Imperial
+  volume label were manually verified at that size on iOS 27.0; 180 mL displays as 6.34 Imperial fl oz.
+  An iOS 26.5 manual check verified no-data hydration, its unavailable-goal wording and the dash in its ring.
+  A later check reproduced an Imperial-label wrap at the intermediate standard XXXL size. Amount and unit
+  controls now stack at sizes above the default, and manual XXXL verification confirmed the full label,
+  amount and stepper remain readable. Unit/HealthKit tests and the Release build passed again after this fix.
+- **Save stability:** food and recipe editors save to disk before closing. A failed save leaves the editor
+  open with an error and restores the previous saved data, so the user can retry.
+- **Accessibility/relaunch scenario passed:** the saved recipe survived immediate termination and relaunch,
+  retaining its 100 mg partial total at the largest text size. Interaction, description, trait and hit-region
+  assertions passed at default and largest text sizes.
+
+Before the intermediate-size fix, the system's visual audit reported volume Dynamic Type/clipping findings
+and near-threshold contrast at the default size. The full system visual audit was not rerun after that narrow
+fix. Reviewed default/largest screenshots show full labels, values and partial/unavailable text; the passing
+scenario is not a blanket clean visual-audit result, and the raw audit findings remain recorded.
+
+Physical-device, iOS 27.2 Apple Health overlap, VoiceOver and two-device iCloud checks remain release gates.
+The earlier uploaded build's tests and archive do not validate these additions.
+
+The new optional encrypted `Food.millilitersPerServing` field is included in the checked-in CloudKit schema.
+Its development import and production deployment must be verified before distributing a build with C6;
+the previously deployed weight and UUID fields do not cover this new field. No deployment is implied by a
+schema-file change.
+
+### Preparing TestFlight 1.1
+
+The project uses version **1.1**, build **26**, for the iPhone app, Watch app and both widget extensions.
+The commands below produced the already uploaded build 26 before C6/C7. For another upload, first use a new
+build number and artifact directory, complete the remaining checks, and verify the new volume field in the
+production schema. The previous archive/export commands were:
+
+```sh
+xcodebuild -project HealthLogger.xcodeproj -scheme HealthLogger \
+  -configuration Release -destination 'generic/platform=iOS' \
+  -archivePath build/testflight-1.1-26/Logalyst.xcarchive \
+  -allowProvisioningUpdates archive
+xcodebuild -exportArchive -archivePath build/testflight-1.1-26/Logalyst.xcarchive \
+  -exportOptionsPlist Config/TestFlight-ExportOptions.plist \
+  -exportPath build/testflight-1.1-26/export -allowProvisioningUpdates
+```
+
+The tracked export options produce a local App Store Connect package with production iCloud entitlements and
+preserve the configured build number. Keep each archive's dSYMs for crash reports. Before distributing C6/C7,
+complete [their remaining distribution gates](RELEASE-NOTES.md#remaining-distribution-gates), including the new
+volume schema field. [The build-26 TestFlight notes](RELEASE-NOTES.md#11-26--testflight) are a historical record;
+their verified production fields do not include serving volume.
+
+### Simulator tests
 
 `HealthLoggerTests` (unit and HealthKit tests) and `HealthLoggerUITests` (UI tests and accessibility audits) run
 from the `HealthLogger` scheme in a simulator: Product › Test, or

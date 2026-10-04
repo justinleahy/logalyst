@@ -11,6 +11,7 @@ struct RecipeEditor: View {
     @State private var servings: Double
     @State private var ingredients: [FoodPortion]
     @State private var addingIngredient = false
+    @State private var saveError: String?
 
     init(recipe: Recipe? = nil, ingredients: [FoodPortion] = [], onSave: @escaping (Recipe) -> Void) {
         self.recipe = recipe
@@ -47,11 +48,11 @@ struct RecipeEditor: View {
             } header: {
                 Text("Ingredients")
             } footer: {
-                Text("Amounts are in servings of each food, or by weight for foods with a serving weight. "
+                Text("Amounts are in servings of each food, or by weight or volume when that serving basis is known. "
                      + "Swipe to remove one.")
             }
-            if servings > 0 {
-                NutritionTotals(portions: [perServing], title: "Nutrition per Serving")
+            if servings.isFinite && servings > 0 && !used.isEmpty {
+                NutritionTotals(portions: [perServing], title: "Nutrition per Serving", ingredientDetails: used)
             }
         }
         .scrollDismissesKeyboard(.interactively)
@@ -71,22 +72,29 @@ struct RecipeEditor: View {
                 .cancelButton { addingIngredient = false }
             }
         }
+        .alert("Couldn't Save Recipe", isPresented: .constant(saveError != nil)) {
+            Button("OK") { saveError = nil }
+        } message: {
+            Text(saveError ?? "")
+        }
     }
 
     private var used: [FoodPortion] {
-        ingredients.filter { $0.servings > 0 }
+        ingredients.filter { $0.servings.isFinite && $0.servings > 0 }
     }
 
     private var perServing: FoodPortion {
-        FoodPortion(name: name, nutrients: Recipe.perServing(used, servings: servings))
+        FoodPortion(name: name, nutrients: Recipe.perServing(used, servings: servings),
+                    nutrientCoverage: Recipe.perServingCoverage(used))
     }
 
     private var isValid: Bool {
-        !name.trimmingCharacters(in: .whitespaces).isEmpty && servings > 0 && !used.isEmpty
+        !name.trimmingCharacters(in: .whitespaces).isEmpty && servings.isFinite && servings > 0 && !used.isEmpty
     }
 
     private func save() {
         let name = name.trimmingCharacters(in: .whitespaces)
+        let previous = recipe.map { (name: $0.name, servings: $0.servings, ingredients: $0.ingredients) }
         let saved: Recipe
         if let recipe {
             recipe.name = name
@@ -97,6 +105,20 @@ struct RecipeEditor: View {
             saved = Recipe(name: name, servings: servings, ingredients: used)
             context.insert(saved)
         }
-        onSave(saved)
+        do {
+            // Autosave may not run before the app closes. Only dismiss once the recipe is on disk.
+            try context.save()
+            onSave(saved)
+        } catch {
+            if let previous {
+                saved.name = previous.name
+                saved.servings = previous.servings
+                saved.ingredients = previous.ingredients
+            } else {
+                // Undo only this insertion so another attempt cannot create a duplicate recipe.
+                context.delete(saved)
+            }
+            saveError = error.localizedDescription
+        }
     }
 }

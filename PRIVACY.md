@@ -24,8 +24,10 @@ With your permission, Logalyst uses Apple Health (HealthKit) to:
 
 - **Save** the measurements, intake, symptoms and events you enter, such as blood pressure, blood glucose,
   weight, water, nutrition, symptoms and sexual activity. Each food entry also records the food's name, brand,
-  serving size and weight, how much you had and the meal, so it can be logged again or corrected, and either
-  where its nutrition was published (for a food looked up online) or that it was estimated from a photo.
+  serving size, any known serving weight or volume, how much you had, the selected unit and the meal, so it can
+  be logged again or corrected. It also retains which nutrients are known (including stated zeros), any
+  missing-ingredient coverage, and either where its nutrition was published (for a food looked up online) or
+  that it was estimated from a photo.
 - **Read** that same kind of data to show your history, prefill your last reading, show today's totals and
   charts, and power the widgets and Watch complications. Nutrition totals include data that other apps have saved
   to Health.
@@ -49,8 +51,10 @@ Logalyst keeps a few things in its own storage on your device:
 
 - **Settings:** your preferred units, daily goals and limits, favorite metrics, preset amounts, log reminder
   schedules, and your Suggest Goals answers.
-- **My Foods and recipes:** the foods you save, with their nutrition per serving, serving weight and barcode, and
-  the recipes you make from them, including where a looked-up ingredient's nutrition was published.
+- **My Foods and recipes:** the foods you save, with their nutrition per serving, any known serving weight or
+  volume, and barcode. Recipes keep their ingredients' portions, selected units, known and missing nutrition,
+  and where a looked-up ingredient's nutrition was published. A stated zero is stored separately from an
+  unavailable nutrient. These details use the same encrypted storage as the rest of your saved foods.
 - **Edits in progress:** when you correct an entry, which entry is being replaced and by which, until the
   correction is finished, so an edit cut short (for example by the app closing) can be completed. This stays on
   your iPhone and isn't synced.

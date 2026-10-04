@@ -3,6 +3,7 @@ import UIKit
 
 struct HistoryView: View {
     @Environment(HealthStore.self) private var health
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var entries: [LoggedEntry] = []
     @State private var loaded = false
     @State private var error: String?
@@ -52,16 +53,23 @@ struct HistoryView: View {
     }
 
     private func row(for entry: LoggedEntry) -> some View {
-        HStack {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6))
+            : AnyLayout(HStackLayout())
+        return layout {
             Label(entry.title, systemImage: entry.systemImage)
-            Spacer()
-            VStack(alignment: .trailing) {
-                Text(entry.valueText).monospacedDigit()
+                .fixedSize(horizontal: false, vertical: true)
+            if !dynamicTypeSize.isAccessibilitySize { Spacer() }
+            VStack(alignment: dynamicTypeSize.isAccessibilitySize ? .leading : .trailing) {
+                Text(entry.valueText)
+                    .monospacedDigit()
+                    .fixedSize(horizontal: false, vertical: true)
                 Text(entry.date, style: .time)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var groupedByDay: [(day: Date, entries: [LoggedEntry])] {

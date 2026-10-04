@@ -21,6 +21,17 @@ struct NutrientTotal: Identifiable {
     let option: UnitOption
     let total: Double
     let goal: Double
+    var hasData = true
+    var missingIngredientCount = 0
+    var isStale = false
+
+    var status: String {
+        if !hasData { return "No data available" }
+        if isStale { return missingIngredientCount > 0 ? "Last recorded · Partial" : "Last recorded" }
+        return missingIngredientCount > 0 ? "Partial" : "Recorded"
+    }
+    var amountText: String { hasData ? option.format(total) : "No data available" }
+    var allowsProgress: Bool { hasData && !isStale && missingIngredientCount == 0 && metric.dailyGoal?.isLimit != true }
 
     var id: String { metric.id }
 
@@ -68,8 +79,10 @@ struct NutritionProvider: TimelineProvider {
             guard let option = health.unitOption(for: metric), let goal = goals.goal(for: metric, in: option) else {
                 continue
             }
-            nutrients.append(NutrientTotal(metric: metric, option: option,
-                                           total: await health.todayTotal(of: metric, in: option), goal: goal))
+            let amount = await health.todayAmount(of: metric, in: option)
+            nutrients.append(NutrientTotal(metric: metric, option: option, total: amount.value ?? 0, goal: goal,
+                hasData: amount.value != nil, missingIngredientCount: amount.missingIngredientCount,
+                isStale: amount.isStale))
         }
         return NutritionEntry(nutrients: nutrients)
     }
@@ -119,12 +132,22 @@ struct NutritionWidgetView: View {
     @ViewBuilder
     private var circular: some View {
         if let calories {
+            if calories.allowsProgress {
             Gauge(value: min(calories.progress, 1)) {
                 Image(systemName: calories.metric.systemImage)
             } currentValueLabel: {
                 Text(calories.option.formatNumber(calories.total)).minimumScaleFactor(0.5)
             }
             .gaugeStyle(.accessoryCircularCapacity)
+            } else {
+                VStack(spacing: 1) {
+                    Image(systemName: calories.metric.systemImage)
+                    Text(calories.hasData ? calories.option.formatNumber(calories.total) : "–")
+                        .minimumScaleFactor(0.5)
+                    Text(calories.status).font(.system(size: 9)).minimumScaleFactor(0.5)
+                }
+                .accessibilityLabel("Calories, \(calories.amountText), \(calories.status)")
+            }
         }
     }
 
@@ -135,16 +158,19 @@ struct NutritionWidgetView: View {
                     .font(.headline)
                     .minimumScaleFactor(0.7)
                     .widgetAccentable()
-                ProgressView(value: min(calories.progress, 1))
+                if calories.allowsProgress { ProgressView(value: min(calories.progress, 1)) }
             }
-            Text(macros.map { "\(Self.macroLetters[$0.metric.id] ?? "") \($0.option.formatNumber($0.total))\($0.option.label)" }
+            Text(macros.map { "\(Self.macroLetters[$0.metric.id] ?? "") \($0.hasData ? $0.option.formatNumber($0.total) : "–")\($0.missingIngredientCount > 0 ? "*" : "")" }
                 .joined(separator: " · "))
                 .font(.caption)
                 .minimumScaleFactor(0.7)
                 .lineLimit(1)
                 .foregroundStyle(.secondary)
-                .accessibilityLabel(macros.map { "\($0.metric.name) \($0.option.format($0.total))" }
+                .accessibilityLabel(macros.map { "\($0.metric.name) \($0.amountText), \($0.status)" }
                     .joined(separator: ", "))
+            if macros.contains(where: { $0.missingIngredientCount > 0 }) {
+                Text("Includes partial nutrition").font(.caption2).foregroundStyle(.secondary)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -158,7 +184,7 @@ struct NutritionWidgetView: View {
 
     /// "1,420 of 2,000 kcal"
     private func caloriesText(_ calories: NutrientTotal) -> String {
-        "\(calories.option.formatNumber(calories.total)) of \(calories.option.format(calories.goal))"
+        calories.hasData ? "\(calories.amountText) · \(calories.status)" : "No data available"
     }
 }
 
@@ -177,14 +203,16 @@ private struct NutrientBar: View {
                     Image(systemName: nutrient.metric.systemImage).frame(width: 18)
                 }
                 Spacer()
-                Text("\(option.formatNumber(nutrient.total)) / \(option.format(nutrient.goal))")
+                Text(nutrient.hasData ? "\(option.formatNumber(nutrient.total)) / \(option.format(nutrient.goal)) · \(nutrient.status)" : "No data available")
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
             }
             .font(.caption)
             .lineLimit(1)
-            ProgressView(value: min(fraction, 1))
-                .tint(nutrient.metric.dailyGoal?.tint(forProgress: fraction))
+            if nutrient.allowsProgress {
+                ProgressView(value: min(fraction, 1))
+                    .tint(nutrient.metric.dailyGoal?.tint(forProgress: fraction))
+            }
         }
     }
 }

@@ -848,6 +848,36 @@ struct ModelRowCheckTests {
                       on: "Cilantro-Lime White Rice 4 oz 210 35 4 1 0 0 350 40 1 0 4") == nil)
     }
 
+    @Test func aValueCannotBelongToTheNextNutrient() throws {
+        let text = "Chicken 4 oz Fat 10g Sodium 350mg"
+        #expect(check("Chicken", "4 oz", ["dietarySodium": 10], on: text) == nil)
+        let food = try #require(check("Chicken", "4 oz", ["dietaryFatTotal": 10, "dietarySodium": 350], on: text))
+        #expect(food.nutrients == ["dietaryFatTotal": 10, "dietarySodium": 350])
+        let punctuated = try #require(check("Chicken", "4 oz", ["dietaryEnergyConsumed": 180, "dietaryFatTotal": 10,
+                                                                "dietarySodium": 350],
+                                            on: "Chicken 4 oz Calories 180, Fat 10g, Sodium 350mg."))
+        #expect(punctuated.nutrients == ["dietaryEnergyConsumed": 180, "dietaryFatTotal": 10, "dietarySodium": 350])
+    }
+
+    @Test func publishedValuesMustUseTheNutrientsUnit() throws {
+        #expect(check("Chicken", "4 oz", ["dietarySodium": 0.3], on: "Chicken 4 oz Sodium 0.3 g") == nil)
+        #expect(check("Chicken", "4 oz", ["dietaryCholesterol": 0.1], on: "Chicken 4 oz Cholesterol 0.1 g") == nil)
+        #expect(check("Chicken", "4 oz", ["dietaryProtein": 10], on: "Chicken 4 oz Protein 10 mg") == nil)
+        #expect(check("Chicken", "4 oz", ["dietaryEnergyConsumed": 430], on: "Chicken 4 oz Calories 430 kJ") == nil)
+        let food = try #require(check("Chicken", "4 oz", ["dietarySodium": 300], on: "Chicken 4 oz Sodium 300 mg"))
+        #expect(food.nutrients["dietarySodium"] == 300)
+    }
+
+    @Test func boundsAndNumberFragmentsAreNotExactPublishedValues() {
+        for text in ["Sugar < 1 g", "Sugar ≤ 1 g", "Sugar 1–2 g", "Sugar 1 g or less", "Sugar 1/2 g"] {
+            #expect(check("Chicken", "4 oz", ["dietarySugar": 1], on: "Chicken 4 oz " + text) == nil)
+        }
+        #expect(check("Chicken", "4 oz", ["dietarySugar": 2], on: "Chicken 4 oz Sugar 1/2 g") == nil)
+        #expect(check("Chicken", "4 oz", ["dietarySugar": 2], on: "Chicken 4 oz 1 / 2 g Sugar") == nil)
+        #expect(check("Chicken", "4 oz", ["dietarySugar": 2], on: "Chicken 4 oz 1–2 g Sugar") == nil)
+        #expect(check("Chicken", "4 oz", ["dietarySugar": 3], on: "Chicken 4 oz Sugar 0,3 g") == nil)
+    }
+
     @Test func valuesThatDontAddUpAreAMisreading() {
         #expect(ModelRowExtractor.addsUp(["dietaryEnergyConsumed": 210, "dietaryFatTotal": 4,
                                           "dietaryCarbohydrates": 40, "dietaryProtein": 4]))

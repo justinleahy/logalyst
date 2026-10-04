@@ -222,7 +222,7 @@ final class FoodFlowUITests: XCTestCase {
 
         // Weigh the rice in ounces, and leave the soup out.
         app.buttons["Unit for \(meal.rice)"].tap()
-        app.buttons["Ounces"].tap()
+        app.buttons["Ounces (weight)"].tap()
         replaceText(in: app.textFields["Ounces of \(meal.rice)"], with: "4")
         replaceText(in: app.textFields["Servings of \(meal.soup)"], with: "0")
         // 4 oz of rice is 113.4 g: 147.4 kcal, plus 300 for the salad.
@@ -230,6 +230,7 @@ final class FoodFlowUITests: XCTestCase {
         attachScreenshot("Composed meal")
 
         // Save as a recipe keeps the chosen ingredients and amounts.
+        scrollUntilHittable(app.buttons["Save as Recipe"])
         app.buttons["Save as Recipe"].tap()
         XCTAssertTrue(app.navigationBars["New Recipe"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["4 oz · 147 kcal"].exists)
@@ -364,13 +365,18 @@ final class FoodFlowUITests: XCTestCase {
         app.buttons["Replace"].tap()
         XCTAssertTrue(app.navigationBars["Replace Lime Wedge"].waitForExistence(timeout: 3))
         // The foods the meal's lookup found are offered first, filtered as you type; Sofritas needs a search.
-        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Chicken'")).firstMatch.exists)
+        // Scope to the sheet: Nutrition behind it may already contain a logged Chicken or Sofritas entry.
+        let results = app.collectionViews["publishedFoodResults"]
+        XCTAssertTrue(results.waitForExistence(timeout: 3))
+        let chicken = results.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Chicken'")).firstMatch
+        XCTAssertTrue(chicken.exists)
         let search = app.searchFields["Search Chipotle"]
         search.tap()
-        app.typeText("sofritas")
-        let sofritas = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Sofritas'")).firstMatch
+        search.typeText("sofritas")
+        XCTAssertEqual(search.value as? String, "sofritas", app.debugDescription)
+        let sofritas = results.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Sofritas'")).firstMatch
         XCTAssertFalse(sofritas.exists)
-        XCTAssertFalse(app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Chicken'")).firstMatch.exists)
+        XCTAssertTrue(chicken.waitForNonExistence(timeout: 3), app.debugDescription)
         app.typeText("\n")
         XCTAssertTrue(sofritas.waitForExistence(timeout: 5))
         attachScreenshot("Published food search")
@@ -489,8 +495,10 @@ final class FoodFlowUITests: XCTestCase {
     /// From Add Food: makes a food with one nutrient, optionally taking the weight its serving size states.
     private func createFood(_ name: String, serving: String, calories: String, useStatedWeight: Bool) {
         let menu = app.navigationBars["Add Food"].buttons["New Food"]
+        waitUntilHittable(menu)
         let menuFrame = menu.frame
         menu.tap()
+        waitUntilHittable(app.buttons["New Recipe"])
         // The menu's own New Food item, which has the same name as the menu.
         let item = app.buttons.matching(identifier: "New Food").allElementsBoundByIndex
             .last { $0.isHittable && $0.frame != menuFrame }
@@ -506,14 +514,19 @@ final class FoodFlowUITests: XCTestCase {
             XCTAssertTrue(use.waitForExistence(timeout: 2), "Expected the editor to offer the serving size's weight.")
             use.tap()
         } else {
-            XCTAssertFalse(app.buttons.matching(NSPredicate(format: "label ENDSWITH 'from Serving Size'")).firstMatch.exists)
+            XCTAssertFalse(app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Use ' AND label CONTAINS ' g from Serving Size'")).firstMatch.exists)
         }
         let field = app.textFields["Calories in kcal"]
-        scrollUntilHittable(field)
+        revealInput(field)
         field.tap()
         app.typeText(calories)
-        app.navigationBars.buttons["Save"].tap()
+        XCTAssertEqual(field.value as? String, calories, "Typing must reach Calories.\n\(app.debugDescription)")
+        let save = app.navigationBars["New Food"].buttons["Save"]
+        XCTAssertTrue(save.isEnabled, "A valid nutrient must enable Save while the input is focused.\n\(app.debugDescription)")
+        save.tap()
+        XCTAssertTrue(app.navigationBars["New Food"].waitForNonExistence(timeout: 5))
         XCTAssertTrue(app.navigationBars["Add Food"].waitForExistence(timeout: 3))
+        waitUntilHittable(menu)
     }
 
     /// Opens a saved food (or a recent one) from Add Food to log it.
@@ -635,10 +648,14 @@ final class FoodFlowUITests: XCTestCase {
 
     private func scrollUntilHittable(_ element: XCUIElement) {
         var tries = 0
+        var wasPresent = element.exists
         while !(element.exists && element.isHittable) && tries < 10 {
+            wasPresent = wasPresent || element.exists
             app.swipeUp(velocity: .slow)
             tries += 1
         }
+        // A full-screen swipe can carry a short row above the navigation bar while dismissing the keyboard.
+        if wasPresent && !(element.exists && element.isHittable) { scrollBackUntilHittable(element) }
     }
 
     private func attachScreenshot(_ name: String) {
@@ -646,5 +663,30 @@ final class FoodFlowUITests: XCTestCase {
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
+    }
+
+    private func waitUntilHittable(_ element: XCUIElement) {
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true AND hittable == true"), object: element)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 5), .completed,
+                       "Element didn't become hittable: \(element)")
+    }
+
+    private func revealInput(_ field: XCUIElement) {
+        for _ in 0..<20 {
+            let screen = app.windows.firstMatch.frame
+            let top = (app.navigationBars.allElementsBoundByIndex.filter(\.isHittable)
+                .map { $0.frame.maxY }.max() ?? screen.minY + 110) + 8
+            let keyboard = app.keyboards.firstMatch
+            let bottom = (keyboard.exists ? keyboard.frame.minY : screen.maxY - 80) - 20
+            if field.exists && field.isHittable && field.frame.minY >= top && field.frame.maxY <= bottom { return }
+            let upward = !field.exists || field.frame.midY > (top + bottom) / 2
+            let center = (top + bottom) / 2
+            let distance = min(60, (bottom - top) / 4)
+            let origin = app.coordinate(withNormalizedOffset: .zero)
+            let start = origin.withOffset(CGVector(dx: screen.midX, dy: center + (upward ? distance : -distance)))
+            let end = origin.withOffset(CGVector(dx: screen.midX, dy: center + (upward ? -distance : distance)))
+            start.press(forDuration: 0.05, thenDragTo: end)
+        }
+        XCTFail("Couldn't fully reveal \(field)\n\(app.debugDescription)")
     }
 }

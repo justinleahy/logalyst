@@ -26,6 +26,27 @@ extension Date {
 }
 
 extension HealthStore {
+    /// Keeps missing data distinct from zero and stores coverage alongside the numeric snapshot.
+    func todayAmount(of metric: Metric, in option: UnitOption) async -> RecordedDailyAmount {
+        let key = "recordedTotal.\(metric.id)"
+        do {
+            let day = try await dailyTotals(for: metric, days: 1).last
+            let isToday = day.map { Calendar.current.isDateInToday($0.day) } ?? false
+            let amount = RecordedDailyAmount(day: day?.day ?? .now, unitLabel: option.label,
+                value: isToday && day?.hasRecordedData == true ? day?.value(in: option) : nil,
+                missingIngredientCount: isToday ? (day?.missingIngredientCount ?? 0) : 0)
+            WidgetCache.save(amount, key: key)
+            return amount
+        } catch {
+            if var cached = WidgetCache.load(RecordedDailyAmount.self, key: key),
+               cached.unitLabel == option.label, Calendar.current.isDateInToday(cached.day) {
+                cached.isStale = true
+                return cached
+            }
+            return RecordedDailyAmount(day: .now, unitLabel: option.label, value: nil, isStale: true)
+        }
+    }
+
     /// Today's total of an intake metric in the given unit, from every source in Health. While Health is
     /// locked, this is the last total a widget read (or zero once the day has rolled over).
     func todayTotal(of metric: Metric, in option: UnitOption) async -> Double {
@@ -59,5 +80,21 @@ extension View {
     /// Widgets don't pick up the global accent color on their own.
     func widgetTint() -> some View {
         tint(Color("AccentColor"))
+    }
+}
+
+/// A widget's recorded total, which may be absent, partial, or last read before Health became unavailable.
+struct RecordedDailyAmount: Codable, Hashable {
+    var day: Date
+    var unitLabel: String
+    var value: Double?
+    var missingIngredientCount = 0
+    var isStale = false
+
+    var status: String {
+        if value == nil { return "No data available" }
+        if isStale { return missingIngredientCount > 0 ? "Last recorded · Partial" : "Last recorded" }
+        if missingIngredientCount > 0 { return "Partial" }
+        return "Recorded"
     }
 }

@@ -325,6 +325,68 @@ final class FoodEditTests {
         try await cleanUp()
     }
 
+    /// An edit whose original couldn't be removed, left for later: A was corrected to B, and both are in Health.
+    private func unfinishedEdit() async throws -> (original: LoggedEntry, correction: LoggedEntry, edit: PendingEdit) {
+        let original = try await logGranola()
+        var food = try #require(original.food)
+        food.servings = 2
+        health.editFault = .delete
+        await #expect(throws: EditError.self) {
+            try await self.health.saveFoods([food], meal: .breakfast, date: original.date, replacing: original)
+        }
+        let edit = try #require(health.unfinishedEdits.first)
+        let correction = try #require(try await entries().first { $0.id == edit.replacement })
+        return (original, correction, edit)
+    }
+
+    /// Editing the correction of an unfinished edit removes that edit's original first, so the new correction is the
+    /// only entry left, now and after a relaunch. It once left the first original too: 200 + 600 kcal for 600.
+    @Test func editingAnUnfinishedCorrectionRemovesItsOriginal() async throws {
+        let (_, correction, _) = try await unfinishedEdit()
+        var food = try #require(correction.food)
+        food.servings = 3
+        try await health.saveFoods([food], meal: .breakfast, date: correction.date, replacing: correction)
+        #expect(health.pendingEdits.isEmpty)
+        #expect(try await entries().map { $0.food?.calories } == [600])
+
+        let relaunched = HealthStore(syncs: false, editDefaults: defaults)
+        await relaunched.finishPendingEdits()
+        #expect(try await entries(using: relaunched).map { $0.food?.calories } == [600])
+        try await cleanUp()
+    }
+
+    /// If that original still can't be removed, the correction isn't edited, and the earlier edit is still offered.
+    @Test func anUnfinishedCorrectionIsntEditedWhileItsOriginalRemains() async throws {
+        let (original, correction, edit) = try await unfinishedEdit()
+        var food = try #require(correction.food)
+        food.servings = 3
+        health.editFault = .delete
+        do {
+            try await health.saveFoods([food], meal: .breakfast, date: correction.date, replacing: correction)
+            Issue.record("The edit should have reported the earlier one.")
+        } catch EditError.earlierEditUnfinished {}
+        #expect(Set(try await entries().map(\.id)) == [original.id, correction.id])
+        #expect(health.unfinishedEdits == [edit])
+
+        try await health.finishEdit(edit)
+        #expect(try await entries().map(\.id) == [correction.id])
+        try await cleanUp()
+    }
+
+    /// The original of an unfinished edit has a correction already, so editing it too is refused.
+    @Test func theOriginalOfAnUnfinishedEditIsntEdited() async throws {
+        let (original, correction, edit) = try await unfinishedEdit()
+        var food = try #require(original.food)
+        food.servings = 3
+        do {
+            try await health.saveFoods([food], meal: .breakfast, date: original.date, replacing: original)
+            Issue.record("The edit should have reported the correction.")
+        } catch EditError.alreadyCorrected {}
+        #expect(Set(try await entries().map(\.id)) == [original.id, correction.id])
+        #expect(health.unfinishedEdits == [edit])
+        try await cleanUp()
+    }
+
     /// An edit cut short before its correction was saved leaves just the original, so it's dropped on relaunch.
     @Test func anEditInterruptedBeforeSavingIsDroppedOnRelaunch() async throws {
         let original = try await logGranola()

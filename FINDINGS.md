@@ -3,7 +3,8 @@
 Reviewed: October 3, 2026  
 Fixes validated: October 3, 2026, against implementation commit `70e903e`\
 Scope: `ROADMAP.md`, the corresponding implementation, and existing tests  
-Status: Not all findings are resolved. F2 and F4 remain partially resolved; F8 is newly identified and open. F1, F3, F5 and F6 are resolved for their original cases. F7's fix is source-verified; dedicated UI/iCloud validation remains outstanding. Release validation remains incomplete.
+Remaining findings fixed: October 3, 2026, on top of C5 commit `54435f4`\
+Status: F2, F4 and F8 were fixed afterwards (see each finding's *Fixed* paragraph and [Fix verification](#fix-verification)); those fixes haven't been independently re-validated. F1, F3, F5 and F6 are resolved for their original cases. F7's fix is source-verified; dedicated UI/iCloud validation remains outstanding. Release validation remains incomplete.
 
 The reviewed 1.1 features are broadly implemented. C5 (restaurant and brand nutrition lookup for meal photos) was added to the roadmap after this review and implemented afterwards, on top of `70e903e`; this review doesn't cover it. The descriptions and initial evidence under F1–F7 document the original review; each finding's validation paragraph records its current disposition. Original source references may have shifted in the fix commit; references in the validation paragraphs and F8 refer to `70e903e`. Neither the review nor the subsequent validation changed implementation files. Fresh tests passed, but additional probes reproduced the remaining defects; see [Fix verification](#fix-verification).
 
@@ -63,6 +64,8 @@ The complete label-import path still produces incorrect nutrition, and some unsu
 
 **Still needed:** Use consistent complete-expression parsing for label normalization and serving metadata, preserve numeric punctuation, and reject unsupported ambiguous expressions throughout the import path.
 
+**Fixed (October 3, 2026):** `ServingWeight` reads each amount only from where its number starts, so `1 / 2 g` is 0.5 g, and treats a multiplication sign anywhere in the text (an `x` or `×` that isn't part of a word, or `*` between numbers) as a multiple, so `2 x (30 g)`, `30 g (x2)` and `30 g (2x)` are ambiguous; `1 box (30 g)` and a footnote's `30 g*` still read as 30 g. It also reads milliliters the same way (`ServingWeight.milliliters`). The label path now scales per-100 nutrients with `ServingWeight` instead of its own regex, so the serving weight and the scaled nutrients always agree, and a serving that isn't one amount leaves the label per 100 g. `NutritionLabel.tidy` keeps the point of a leading decimal. New tests: the shared parser cases above, a volume reading, and full label imports of `1/2 g` (2 kcal and 0.1 g protein), `.5 g` (0.5 g, 2 kcal) and `2 x (15 g)` (stays per 100 g).
+
 ### F3 — Medium: Rescanning a label mixes different serving sizes
 
 **Roadmap:** C2 — Label imports and a consistent nutrition/weight basis  
@@ -101,6 +104,8 @@ Two remaining cases were reproduced using extracted production identifier/matchi
 **Current source:** [identifier at line 55](HealthLogger/FoodIntents.swift#L55), [matching at line 63](HealthLogger/FoodIntents.swift#L63), and [query deduplication at line 130](HealthLogger/FoodIntents.swift#L130). These probes did not exercise the AppIntents runtime or real CloudKit sync. The duplicate-record test uses records an hour apart; the deletion test leaves no nearby duplicate, so neither catches these cases.
 
 **Still needed:** Use a stable, immutable identifier for each record that syncs through iCloud, and do not substitute another record through fuzzy timestamp matching.
+
+**Fixed (October 3, 2026):** `Food` and `Recipe` gained `uuid`, an optional `UUID` marked for iCloud encryption, set when a record is created. A record without one (saved before 1.1, or by an iPhone still on 1.0) is given one, and saved, the first time `SavedFoodQuery` fetches it. A Shortcuts entity's ID is that UUID, and resolution requires an exact match, so there is no timestamp matching. Food Shortcuts are new in 1.1, so no released shortcut uses the old IDs. The two new fields must join `Food.gramsPerServing` in the CloudKit production schema before a 1.1 build is distributed. If two iPhones give the same older record different IDs before either syncs, iCloud keeps one, and a shortcut made with the other reports the food as unavailable rather than logging another. New tests replace the millisecond-tolerance test: the reviewer's two same-millisecond records (the offered favorite is the one logged), a deleted record with a same-named one 0.5 s later (not found), and an older record gaining an ID that it keeps.
 
 ### F5 — Medium: “Log Last Meal Again” can log an incomplete meal
 
@@ -145,7 +150,7 @@ Recents are cached and reloaded when `health.changeCount` changes. Editing a sav
 ### F8 — Medium: Editing an unresolved correction can leave a permanent duplicate
 
 **Roadmap:** C3 — Edit logged food and shared edit recovery\
-**Status:** Open; newly identified during fix validation\
+**Status:** Newly identified during fix validation; fixed afterwards (see below)\
 **Source:** [replacement deletion at Shared/HealthStore.swift:677](Shared/HealthStore.swift#L677), [missing-correction handling at line 694](Shared/HealthStore.swift#L694), and [History editing at HealthLogger/HistoryView.swift:17](HealthLogger/HistoryView.swift#L17)\
 **Evidence:** Reproduced for manual completion and automatic relaunch reconciliation using extracted production recovery methods with a mocked Health sample backend and persistence. This was not a HealthKit or UI runtime test.
 
@@ -157,16 +162,18 @@ The result is A + C: **800 kcal instead of the intended 600 kcal**, with no pend
 
 **Suggested correction:** Track the successor correction when replacing an entry involved in a pending edit, or prevent further editing of that correction until the original cleanup is resolved. Cover both manual completion and relaunch recovery.
 
+**Fixed (October 3, 2026):** before an edit saves anything, `HealthStore.settleEdits(involving:)` resolves any unfinished edit the entry belongs to, so a chain of edits never forms. Editing B, the correction of unfinished edit A → B, first finishes that edit (removing A); if A still can't be removed, `EditError.earlierEditUnfinished` is thrown and nothing changes, leaving A → B listed in History. Editing A, the original, while B is in Health throws `EditError.alreadyCorrected`; if B was never saved, the stale edit is dropped and A is edited normally. Since no pending edit can outlive its correction being replaced, manual completion and relaunch recovery need no changes. New HealthKit tests: the reviewer's sequence ends with only the 600 kcal entry, also after a relaunched store's recovery; editing B while A's removal fails again changes nothing and keeps the edit listed; editing A is refused.
+
 ## Feature coverage
 
 | Roadmap scope | Review result |
 | --- | --- |
 | C1: Watch presets | Implemented; no additional definite defect found. Physical-device Crown validation remains open. |
-| C2: Weighed foods and recipe ingredients | Implemented; F2 remains partially resolved, F3 is resolved, and F7's fix is source-verified with dedicated UI/iCloud validation outstanding. Optional encrypted weight storage, legacy decoding, shared scaling, recipe snapshots and Health metadata are present. |
-| C3: Logged-food editing and shared recovery | Implemented; the original F1 and F6 cases are resolved, but F8 remains open. Food and non-food edits use the shared recovery path. |
+| C2: Weighed foods and recipe ingredients | Implemented; F2 is fixed (not yet re-validated), F3 is resolved, and F7's fix is source-verified with dedicated UI/iCloud validation outstanding. Optional encrypted weight storage, legacy decoding, shared scaling, recipe snapshots and Health metadata are present. |
+| C3: Logged-food editing and shared recovery | Implemented; the original F1 and F6 cases are resolved, and F8 is fixed (not yet re-validated). Food and non-food edits use the shared recovery path. |
 | C4: Meal composition and correction | Shared add, replace, adjust, exclude and Save as Recipe workflows are implemented; no additional definite defect found. Real-photo device validation remains open. |
 | C5: Restaurant and brand nutrition lookup for meal photos | Added to the 1.1 core and implemented after this review, so not reviewed here. The roadmap's 1.1 implementation status records its simulator validation and what remains. |
-| Optional 1: Food Siri/Shortcuts | Implemented on iPhone; F4 remains partially resolved and the original F5 case is resolved. |
+| Optional 1: Food Siri/Shortcuts | Implemented on iPhone; F4 is fixed (not yet re-validated) and the original F5 case is resolved. |
 | Optional 2: Configurable nutrition widget | Still held; the existing widget remains fixed. |
 | Optional 3: Onboarding | Implemented; no additional definite defect found. |
 | Backlog | Standalone food search by name, Watch food re-logging, Watch today view, past-day food diary, goal adherence, entry notes and toothbrushing timer remain unimplemented, as planned. |
@@ -216,3 +223,43 @@ xcodebuild test -quiet -project HealthLogger.xcodeproj -scheme HealthLogger \
 ```
 
 The result bundle is `/private/tmp/logalyst-findings-validation-signed-20261003.xcresult`; the captured log is `/private/tmp/logalyst-findings-validation-signed-20261003.log`. These are temporary local validation artifacts, not committed test fixtures.
+
+### After the F2, F4 and F8 fixes
+
+The fixes were tested on October 3, 2026 by their implementer, not independently, on the same simulator (iPhone 18 Pro, iOS 27.0, build `24A434`), on top of C5 commit `54435f4`:
+
+- `HealthLoggerTests`: **148 passed, 0 failed** (209 runs with parameterized arguments), including every new F2, F4 and F8 test named in those findings' *Fixed* paragraphs. Result bundle: `/private/tmp/logalyst-fix-results.xcresult`.
+- `HealthLoggerUITests/FoodFlowUITests`: **11 passed, 2 skipped, 1 failed**. The failure, `testReplaceAFoodWithAPublishedOne` (C5), is at line 373: a Chicken row is still listed after "sofritas" is typed into the Replace search. It fails the same way at `54435f4` without these fixes (checked in a separate worktree), so it predates them, and it's not one of F1–F8. It is open. Result bundle: `/private/tmp/logalyst-fix-ui.xcresult`.
+- Not covered: the AppIntents runtime with Siri, two-device iCloud behavior for the new `uuid` fields (including two iPhones giving an older record an ID at once), the CloudKit schema deployment, and camera OCR of real labels.
+
+### TestFlight 1.1 preparation: replacement-test diagnosis
+
+The C5 replacement test's failure above was reproduced on the original iPhone 18 Pro simulator on October 3,
+2026. A diagnostic assertion confirmed the search field contained `sofritas`; the accessibility hierarchy showed
+the search sheet's empty results correctly, but also exposed an older `Chicken, 3:42 PM, 360 kcal` button in the
+Nutrition screen behind the sheet. The test's app-wide `Chicken` query matched that logged entry. The same test
+passed unchanged on the separate Logalyst 1.1 Validation simulator.
+
+The published-food list now has the accessibility identifier `publishedFoodResults`, and the regression test
+queries Chicken and Sofritas only inside that list. It also checks the entered query and waits for the filtered
+row to disappear. This changes test targeting, not food matching or search behavior.
+
+### TestFlight code-readiness review: published-nutrition validation
+
+The subsequent targeted review included C5's website reader, table reader, model-value validation and matching,
+plus meal-photo assembly, food identifiers and the release configuration. It found a correctness defect in
+`ModelRowExtractor.isLabeled`: its model-value validation accepted `Sodium 0.3 g` as 0.3 mg, the 10 from
+`Fat 10g Sodium 350mg` as sodium, and `Sugar < 1 g` as exactly 1 g. These were reproduced by executing the
+extracted production `verified` method and its helpers with fixed source lines and model responses; the probe
+did not depend on a live model generating the wrong answer.
+
+The validation now checks printed units, rejects bounds, ranges and number fragments, and prevents a value
+following one nutrient label from belonging to the next label. Unsupported units stay unknown, as they do in
+the table reader; the validator does not guess conversions. Three regression tests cover those cases and valid
+controls in `ModelRowCheckTests`. The probe now rejects each reproduced bad value and retains correctly labeled
+350 mg sodium.
+
+Final verification: `build/testflight-1.1-26/VerifiedTests.xcresult` records **153 passed, 0 failed** on iPhone 18 Pro /
+iOS 27.0 (24A434): all 151 unit/HealthKit tests plus the branded-meal and published-food replacement UI tests.
+The final Release archive, App Store Connect export and Apple's server validation succeeded; the artifact paths
+and remaining manual CloudKit/device checks are recorded in `RELEASE-NOTES.md`.

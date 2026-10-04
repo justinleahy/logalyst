@@ -56,6 +56,7 @@ struct MetricReading: Codable, Hashable {
     var text: String
     /// When the reading was taken, or nil for today's total.
     var date: Date?
+    var status: String?
 }
 
 struct MetricProvider: AppIntentTimelineProvider {
@@ -92,11 +93,16 @@ struct MetricProvider: AppIntentTimelineProvider {
     }
 
     private func totalEntry(for metric: Metric, option: UnitOption, health: HealthStore) async -> MetricEntry {
-        let total = await health.todayTotal(of: metric, in: option)
+        let amount = await health.todayAmount(of: metric, in: option)
+        guard let total = amount.value else {
+            return MetricEntry(metric: metric, reading: MetricReading(value: "–", text: "No data available"))
+        }
+        let partial = amount.missingIngredientCount > 0
         var entry = MetricEntry(metric: metric,
-                                reading: MetricReading(value: option.formatNumber(total), text: option.format(total)))
-        // On the Watch these are the goals the iPhone last sent, or the defaults until it has.
-        if let goal = NutritionGoals().goal(for: metric, in: option), goal > 0 {
+            reading: MetricReading(value: option.formatNumber(total) + (partial || amount.isStale ? "*" : ""),
+                text: option.format(total) + " · " + amount.status, status: amount.status))
+        if !partial, !amount.isStale, metric.dailyGoal?.isLimit != true,
+           let goal = NutritionGoals().goal(for: metric, in: option), goal > 0 {
             entry.progress = total / goal
         }
         return entry
@@ -140,7 +146,8 @@ struct MetricWidgetView: View {
 
     var body: some View {
         switch family {
-        case .accessoryCircular: circular
+        case .accessoryCircular:
+            circular.accessibilityLabel("\(metric.name), \(entry.reading?.text ?? "No data available")")
         case .accessoryRectangular: rectangular
         case .accessoryInline: inline
         #if os(watchOS)
@@ -171,6 +178,9 @@ struct MetricWidgetView: View {
                         .font(.system(.body, design: .rounded).weight(.semibold))
                         .minimumScaleFactor(0.4)
                         .lineLimit(1)
+                    if let status = entry.reading?.status, status != "Recorded" {
+                        Text(status).font(.system(size: 9)).minimumScaleFactor(0.5).lineLimit(1)
+                    }
                 }
                 .padding(4)
             }
@@ -196,7 +206,7 @@ struct MetricWidgetView: View {
             Label(metric.name, systemImage: metric.systemImage)
                 .font(.headline)
                 .widgetAccentable()
-            Text(entry.reading?.text ?? "Nothing logged")
+            Text(entry.reading?.text ?? "No data available")
                 .font(.system(.body, design: .rounded).weight(.semibold))
                 .minimumScaleFactor(0.6)
             if let progress = entry.progress {
@@ -223,7 +233,7 @@ struct MetricWidgetView: View {
             Text(metric.name)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-            Text(entry.reading?.text ?? "Nothing logged")
+            Text(entry.reading?.text ?? "No data available")
                 .font(.system(.title2, design: .rounded).weight(.semibold))
                 .minimumScaleFactor(0.5)
                 .lineLimit(1)
@@ -252,7 +262,7 @@ private struct ReadingTime: View {
                     Text(date, format: .dateTime.month(.abbreviated).day())
                 }
             } else {
-                Text("Today")
+                Text(reading.status ?? "Today")
             }
         }
     }

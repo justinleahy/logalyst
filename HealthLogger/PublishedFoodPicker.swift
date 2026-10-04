@@ -71,6 +71,7 @@ struct PublishedFoodPicker: View {
                 }
             }
         }
+        .accessibilityIdentifier("publishedFoodResults")
         .overlay {
             if lookup != nil {
                 ProgressView("Looking Up…")

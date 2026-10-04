@@ -372,8 +372,14 @@ struct RecentMeal: Identifiable {
 
     /// "Oatmeal, Coffee · 520 kcal"
     var summary: String {
-        let calories = foods.map(\.calories).reduce(0, +)
-        return foods.map(\.name).joined(separator: ", ") + " · " + formatCalories(calories)
+        let coverage = FoodNutrition.coverage(of: "dietaryEnergyConsumed", in: foods)
+        let calories = FoodNutrition.totals(foods)["dietaryEnergyConsumed"]
+        let detail = calories.map {
+            formatCalories($0) + (coverage.isPartial ? " · Partial" : "")
+                + (coverage.isUncertain ? " · Coverage unknown" : "")
+        }
+            ?? "Calories unavailable"
+        return foods.map(\.name).joined(separator: ", ") + " · " + detail
     }
 }
 
@@ -393,7 +399,14 @@ extension FoodPortion {
 
     /// "Brand · 2 × 1 cup · 300 kcal", or "Brand · 35 g · 140 kcal" when weighed, skipping whatever is missing.
     var summary: String {
-        [brand, amountText, formatCalories(calories)].filter { !$0.isEmpty }.joined(separator: " · ")
+        [brand, amountText, calorieSummary].filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+
+    var calorieSummary: String {
+        guard let calories = knownAmount(of: "dietaryEnergyConsumed") else { return "Calories unavailable" }
+        let coverage = coverage(of: "dietaryEnergyConsumed")
+        return formatCalories(calories)
+            + (coverage.isPartial ? " · Partial" : "") + (coverage.isUncertain ? " · Coverage unknown" : "")
     }
 }
 
@@ -465,41 +478,50 @@ struct LogFoodView: View {
                 if !portion.servingSize.isEmpty {
                     LabeledContent("Serving Size", value: portion.servingSize)
                 }
-                if portion.canWeigh {
-                    Picker("Enter In", selection: unitBinding) {
-                        Text("Servings").tag(WeightUnit?.none)
-                        ForEach(WeightUnit.allCases) { Text($0.title).tag(Optional($0)) }
-                    }
-                    .pickerStyle(.segmented)
-                }
-                let amount = HStack {
-                    AmountField(portion: $portion, width: dynamicTypeSize.isAccessibilitySize ? .infinity : 70)
-                    if let unit = portion.enteredWeightUnit {
-                        Text(unit.label).foregroundStyle(.secondary)
-                    }
-                    AmountStepper(portion: $portion, servings: 0.5...20)
-                }
-                // At the largest text sizes the amount gets its own line, so it isn't cut off.
-                if dynamicTypeSize.isAccessibilitySize {
+                PortionUnitPicker(portion: $portion)
+                // Fluid-ounce labels need a separate line as soon as text is enlarged.
+                if dynamicTypeSize > .large {
                     VStack(alignment: .leading) {
-                        Text(portion.enteredWeightUnit == nil ? "Servings" : "Weight")
-                        amount
+                        Text(portion.entryUnit.amountTitle)
+                        if let label = portion.entryUnit.label {
+                            Text(label).foregroundStyle(.secondary)
+                        }
+                        HStack {
+                            AmountField(portion: $portion, width: .infinity)
+                            AmountStepper(portion: $portion, servings: 0.5...20)
+                        }
                     }
                 } else {
                     HStack {
-                        Text(portion.enteredWeightUnit == nil ? "Servings" : "Weight")
+                        Text(portion.entryUnit.amountTitle)
                         Spacer()
-                        amount
+                        AmountField(portion: $portion, width: 70)
+                        if let label = portion.entryUnit.label {
+                            Text(label).foregroundStyle(.secondary)
+                        }
+                        AmountStepper(portion: $portion, servings: 0.5...20)
                     }
                 }
             } header: {
                 if !portion.brand.isEmpty { Text(portion.brand) }
             } footer: {
-                if let grams = portion.gramsPerServing, portion.canWeigh {
-                    Text("One serving weighs \(WeightUnit.grams.format(grams: grams)).")
+                VStack(alignment: .leading, spacing: 4) {
+                    if let grams = portion.gramsPerServing, portion.canWeigh {
+                        Text("One serving weighs \(WeightUnit.grams.format(grams: grams)).")
+                    }
+                    if let milliliters = portion.millilitersPerServing, portion.canMeasureVolume {
+                        Text("One serving contains \(VolumeUnit.milliliters.format(milliliters: milliliters)).")
+                    }
                 }
             }
             NutritionTotals(portions: [portion])
+            if !portion.hasKnownNutrition {
+                Section {
+                    Label("No known nutrition to log", systemImage: "info.circle")
+                } footer: {
+                    Text("Add nutrition to this food or its recipe ingredients before logging. Unavailable values can't be saved to Health as zero.")
+                }
+            }
             if let source = portion.source {
                 Section {
                     SourceRow(source: source)
@@ -520,7 +542,8 @@ struct LogFoodView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                Button(editing == nil ? "Log" : "Save", action: save).disabled(isSaving || portion.servings <= 0)
+                Button(editing == nil ? "Log" : "Save", action: save)
+                    .disabled(isSaving || !portion.servings.isFinite || portion.servings <= 0 || !portion.hasKnownNutrition)
             }
         }
         .sensoryFeedback(.success, trigger: saved)
@@ -532,12 +555,8 @@ struct LogFoodView: View {
         .incompleteEditAlert($incompleteEdit, onDone: close)
     }
 
-    private var unitBinding: Binding<WeightUnit?> {
-        Binding { portion.enteredWeightUnit } set: { portion.enter(in: $0) }
-    }
-
     private func save() {
-        guard !isSaving else { return }
+        guard !isSaving, portion.servings.isFinite, portion.servings > 0, portion.hasKnownNutrition else { return }
         isSaving = true
         Task {
             do {
@@ -563,20 +582,104 @@ struct LogFoodView: View {
     }
 }
 
-/// Types a portion's amount in the unit it's entered in: servings, grams or ounces.
+/// One selection across servings, weight and volume. The serving count stays unchanged when units change.
+private enum PortionEntryUnit: Hashable {
+    case servings
+    case weight(WeightUnit)
+    case volume(VolumeUnit)
+
+    var title: String {
+        switch self {
+        case .servings: "Servings"
+        case .weight(let unit): unit == .ounces ? "Ounces (weight)" : unit.title
+        case .volume(let unit): unit.title
+        }
+    }
+
+    var label: String? {
+        switch self {
+        case .servings: nil
+        case .weight(let unit): unit == .ounces ? "oz wt" : unit.label
+        case .volume(let unit): unit.label
+        }
+    }
+
+    var amountTitle: String {
+        switch self {
+        case .servings: "Servings"
+        case .weight: "Weight"
+        case .volume: "Volume"
+        }
+    }
+}
+
+private extension FoodPortion {
+    var entryUnit: PortionEntryUnit {
+        get {
+            if let unit = enteredVolumeUnit { return .volume(unit) }
+            if let unit = enteredWeightUnit { return .weight(unit) }
+            return .servings
+        }
+        set {
+            switch newValue {
+            case .servings: enter(in: nil)
+            case .weight(let unit): enter(in: unit)
+            case .volume(let unit): enter(volumeUnit: unit)
+            }
+        }
+    }
+}
+
+private struct PortionUnitPicker: View {
+    @Binding var portion: FoodPortion
+
+    var body: some View {
+        if portion.canMeasureVolume {
+            Picker("Enter In", selection: $portion.entryUnit) {
+                PortionUnitOptions(portion: portion)
+            }
+            .pickerStyle(.menu)
+            .accessibilityIdentifier("portionUnitPicker")
+        } else if portion.canWeigh {
+            // Preserve the compact weight-only control; no fluid units to confuse with its ounces.
+            Picker("Enter In", selection: $portion.entryUnit) {
+                Text("Servings").tag(PortionEntryUnit.servings)
+                ForEach(WeightUnit.allCases) { Text($0.title).tag(PortionEntryUnit.weight($0)) }
+            }
+            .pickerStyle(.segmented)
+        }
+    }
+}
+
+private struct PortionUnitOptions: View {
+    let portion: FoodPortion
+
+    var body: some View {
+        Text("Servings").tag(PortionEntryUnit.servings)
+        if portion.canWeigh {
+            ForEach(WeightUnit.allCases) { unit in
+                Text(PortionEntryUnit.weight(unit).title).tag(PortionEntryUnit.weight(unit))
+            }
+        }
+        if portion.canMeasureVolume {
+            ForEach(VolumeUnit.allCases) { Text($0.title).tag(PortionEntryUnit.volume($0)) }
+        }
+    }
+}
+
+/// Types a portion's amount in its selected serving, weight or volume unit.
 private struct AmountField: View {
     @Binding var portion: FoodPortion
     let width: CGFloat
 
     var body: some View {
-        let digits = portion.enteredWeightUnit?.fractionDigits ?? 2
+        let digits = portion.enteredVolumeUnit?.fractionDigits ?? portion.enteredWeightUnit?.fractionDigits ?? 2
         TextField("0", value: $portion.enteredAmount, format: .number.precision(.fractionLength(0...digits)))
             .keyboardType(.decimalPad)
             .multilineTextAlignment(.trailing)
             .monospacedDigit()
             .frame(maxWidth: width)
-            .accessibilityLabel(portion.enteredWeightUnit.map { "\($0.title) of \(portion.name)" }
-                ?? "Servings of \(portion.name)")
+            .accessibilityLabel("\(portion.enteredVolumeUnit?.title ?? portion.enteredWeightUnit?.title ?? "Servings") of \(portion.name)")
     }
 }
 
@@ -587,13 +690,14 @@ private struct AmountStepper: View {
     let servings: ClosedRange<Double>
 
     var body: some View {
-        let range: ClosedRange<Double> = switch portion.enteredWeightUnit {
-        case .grams?: 0...5000
-        case .ounces?: 0...176
-        case nil: servings
+        let range: ClosedRange<Double> = switch portion.entryUnit {
+        case .weight(.grams), .volume(.milliliters): 0...5000
+        case .weight(.ounces): 0...176
+        case .volume: 0...180
+        case .servings: servings
         }
         Stepper("Amount of \(portion.name)", value: $portion.enteredAmount, in: range,
-                step: portion.enteredWeightUnit?.step ?? 0.5)
+                step: portion.enteredVolumeUnit?.step ?? portion.enteredWeightUnit?.step ?? 0.5)
             .labelsHidden()
     }
 }
@@ -627,6 +731,8 @@ struct LogMealView: View {
     @State private var savingRecipe = false
     @State private var addingFood = false
     @State private var replacing: Replacement?
+    /// A measured volume can't be carried to a food without a volume basis. Keep it out of totals until reviewed.
+    @State private var unconfirmedPortions: [FoodPortion.ID: FoodPortion] = [:]
 
     /// A food in the list being swapped for another, such as a meal-photo guess for the right saved food.
     private struct Replacement: Identifiable {
@@ -666,6 +772,18 @@ struct LogMealView: View {
                 ForEach($portions) { $portion in
                     VStack(alignment: .leading, spacing: 6) {
                         PortionRow(portion: $portion, zeroText: zeroText(for: portion))
+                        if let original = unconfirmedPortions[portion.id], portion.servings > 0 {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("\(original.amountText) can't be converted to this food's servings. Enter a serving amount, then confirm it. It isn't counted yet.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Button("Confirm \(portion.amountText)") {
+                                    unconfirmedPortions[portion.id] = nil
+                                }
+                                .buttonStyle(.bordered)
+                                .accessibilityLabel("Confirm amount of \(portion.name)")
+                            }
+                        }
                         if let review = reviews[portion.id] {
                             ReviewPrompt(portion: portion, review: review, brand: branded?.brand ?? "",
                                          onChoose: { choose($0, for: portion) },
@@ -691,11 +809,20 @@ struct LogMealView: View {
                     .compactMap { $0 }.joined(separator: " "))
             }
             NutritionTotals(portions: included)
+            if !foodsWithoutNutrition.isEmpty {
+                Section {
+                    Label("Some foods have no known nutrition", systemImage: "info.circle")
+                    Text(foodsWithoutNutrition.map(\.name).joined(separator: ", "))
+                        .foregroundStyle(.secondary)
+                } footer: {
+                    Text("Add nutrition or leave these foods out before logging. If another ingredient has nutrition, save the meal as a recipe to preserve the unavailable ingredients and their partial totals.")
+                }
+            }
             sourcesSection
             MealAndTimeSection(meal: $meal, mealChosen: $mealChosen, date: $date)
             Section {
                 Button("Save as Recipe", systemImage: "book.closed") { savingRecipe = true }
-                    .disabled(included.isEmpty)
+                    .disabled(!included.contains(where: \.hasKnownNutrition) || needsPortionConfirmation)
             } footer: {
                 Text("Save these foods as a recipe to log them together later.")
             }
@@ -720,7 +847,7 @@ struct LogMealView: View {
             NavigationStack {
                 MealFoodPicker(title: "Replace \(target.name)", branded: branded) { picked in
                     if let food = picked.first, let index = portions.firstIndex(where: { $0.id == target.id }) {
-                        portions[index] = portions[index].replaced(by: food)
+                        replacePortion(at: index, with: food)
                         reviews[target.id] = nil
                     }
                     replacing = nil
@@ -732,7 +859,8 @@ struct LogMealView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                Button("Log", action: save).disabled(isSaving || included.isEmpty)
+                Button("Log", action: save)
+                    .disabled(isSaving || included.isEmpty || needsPortionConfirmation || !foodsWithoutNutrition.isEmpty)
             }
         }
         .sensoryFeedback(.success, trigger: saved)
@@ -797,7 +925,27 @@ struct LogMealView: View {
     }
 
     private var included: [FoodPortion] {
-        portions.filter { $0.servings > 0 }
+        portions.filter { $0.servings.isFinite && $0.servings > 0 && unconfirmedPortions[$0.id] == nil }
+    }
+
+    private var foodsWithoutNutrition: [FoodPortion] {
+        included.filter { !$0.hasKnownNutrition }
+    }
+
+    private var needsPortionConfirmation: Bool {
+        portions.contains { $0.servings > 0 && unconfirmedPortions[$0.id] != nil }
+    }
+
+    private func replacePortion(at index: Int, with food: FoodPortion) {
+        let previous = portions[index]
+        // Replacing an unconfirmed choice again must not silently confirm its default serving count.
+        let original = unconfirmedPortions[previous.id] ?? previous
+        let replacement = original.replaced(by: food)
+        unconfirmedPortions[previous.id] = nil
+        if original.enteredVolumeUnit != nil && !replacement.canMeasureVolume {
+            unconfirmedPortions[replacement.id] = original
+        }
+        portions[index] = replacement
     }
 
     /// What a food at zero says: left out, or waiting for the prompt under it.
@@ -828,10 +976,15 @@ struct LogMealView: View {
         guard let index = portions.firstIndex(where: { $0.id == portion.id }), let review = reviews[portion.id] else {
             return
         }
-        var settled = food
-        settled.id = UUID()
-        settled.servings = portion.servings > 0 ? portion.servings : review.suggestedServings
-        portions[index] = settled
+        if portion.servings > 0 {
+            replacePortion(at: index, with: food)
+        } else {
+            var settled = food
+            settled.id = UUID()
+            settled.servings = review.suggestedServings
+            portions[index] = settled
+        }
+        let settled = portions[index]
         reviews[portion.id] = nil
         reviews[settled.id] = ItemReview(origin: review.origin, suggestedServings: review.suggestedServings,
                                          estimate: review.estimate)
@@ -846,7 +999,7 @@ struct LogMealView: View {
     }
 
     private func save() {
-        guard !isSaving else { return }
+        guard !isSaving, !included.isEmpty, !needsPortionConfirmation, foodsWithoutNutrition.isEmpty else { return }
         isSaving = true
         Task {
             defer { isSaving = false }
@@ -926,7 +1079,7 @@ private struct ReviewPrompt: View {
 extension FoodPortion {
     /// "4 oz · 210 kcal", to tell published foods apart when choosing one.
     var choiceDetail: String {
-        [servingSize, formatCalories(nutrients["dietaryEnergyConsumed"] ?? 0)].filter { !$0.isEmpty }
+        [servingSize, calorieSummary].filter { !$0.isEmpty }
             .joined(separator: " · ")
     }
 }
@@ -965,8 +1118,17 @@ struct PortionRow: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        // At the largest text sizes the amount goes under the food, so neither is cut off.
-        if dynamicTypeSize.isAccessibilitySize {
+        // Enlarged text separates the unit from the amount, so neither is cut off.
+        if dynamicTypeSize > .large {
+            VStack(alignment: .leading, spacing: 8) {
+                food
+                unitMenu
+                HStack {
+                    AmountField(portion: $portion, width: .infinity)
+                    AmountStepper(portion: $portion, servings: 0...50)
+                }
+            }
+        } else if portion.enteredVolumeUnit != nil {
             VStack(alignment: .leading, spacing: 8) {
                 food
                 HStack { amount(width: .infinity) }
@@ -975,7 +1137,7 @@ struct PortionRow: View {
             HStack {
                 food
                 Spacer()
-                amount(width: portion.enteredWeightUnit == nil ? 44 : 56)
+                amount(width: portion.entryUnit == .servings ? 44 : 56)
             }
         }
     }
@@ -988,32 +1150,58 @@ struct PortionRow: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             NutritionBasisLabel(portion: portion)
+            if portion.servings > 0 { NutritionAvailabilityLabel(portion: portion) }
         }
     }
 
     @ViewBuilder
     private func amount(width: CGFloat) -> some View {
         AmountField(portion: $portion, width: width)
-        if portion.canWeigh {
+        unitMenu
+        AmountStepper(portion: $portion, servings: 0...50)
+    }
+
+    @ViewBuilder
+    private var unitMenu: some View {
+        if portion.canWeigh || portion.canMeasureVolume {
             Menu {
-                Picker("Enter \(portion.name) In", selection: unitBinding) {
-                    Text("Servings").tag(WeightUnit?.none)
-                    ForEach(WeightUnit.allCases) { Text($0.title).tag(Optional($0)) }
+                Picker("Enter \(portion.name) In", selection: $portion.entryUnit) {
+                    PortionUnitOptions(portion: portion)
                 }
             } label: {
                 HStack(spacing: 2) {
-                    Text(portion.enteredWeightUnit?.label ?? "×")
+                    Text(portion.entryUnit.label ?? "×")
                     Image(systemName: "chevron.up.chevron.down").font(.caption2)
                 }
             }
             .accessibilityLabel("Unit for \(portion.name)")
-            .accessibilityValue(portion.enteredWeightUnit?.title ?? "Servings")
+            .accessibilityValue(portion.entryUnit.title)
         }
-        AmountStepper(portion: $portion, servings: 0...50)
     }
 
-    private var unitBinding: Binding<WeightUnit?> {
-        Binding { portion.enteredWeightUnit } set: { portion.enter(in: $0) }
+}
+
+/// Availability is separate from where a value came from or whether it is an estimate.
+struct NutritionAvailabilityLabel: View {
+    let portion: FoodPortion
+
+    var body: some View {
+        let missing = FoodNutrient.metrics.filter {
+            let coverage = portion.coverage(of: $0.id)
+            return coverage.isUnavailable || coverage.isPartial
+        }
+        let uncertain = FoodNutrient.metrics.contains { portion.coverage(of: $0.id).isUncertain }
+        if uncertain {
+            Text(missing.isEmpty ? "Ingredient coverage unknown"
+                 : "Some nutrition unavailable; ingredient coverage unknown")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        } else if !missing.isEmpty {
+            Text("\(missing.count) \(missing.count == 1 ? "nutrient" : "nutrients") unavailable or partial")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("Nutrition unavailable or partial: \(missing.map(\.name).joined(separator: ", "))")
+        }
     }
 }
 
@@ -1043,20 +1231,68 @@ struct NutritionBasisLabel: View {
 struct NutritionTotals: View {
     let portions: [FoodPortion]
     var title = "Nutrition"
+    /// Recipe previews show per-serving amounts but name the original ingredients with missing values.
+    var ingredientDetails: [FoodPortion]?
 
     var body: some View {
-        Section(title) {
+        let totals = FoodNutrition.totals(portions)
+        Section {
             ForEach(FoodNutrient.metrics) { metric in
-                let total = portions.map { $0.amount(of: metric.id) }.reduce(0, +)
-                if total > 0, let option = metric.unitOptions.first {
-                    LabeledContent {
-                        Text(option.format(total)).monospacedDigit()
-                    } label: {
-                        Label(metric.name, systemImage: metric.systemImage)
+                let coverage = FoodNutrition.coverage(of: metric.id, in: portions)
+                if let option = metric.unitOptions.first {
+                    VStack(alignment: .leading, spacing: 4) {
+                        LabeledContent {
+                            VStack(alignment: .trailing, spacing: 2) {
+                                if let total = totals[metric.id], !coverage.isUnavailable {
+                                    Text(option.format(total)).monospacedDigit()
+                                        .accessibilityIdentifier("nutritionValue-\(metric.id)")
+                                    if coverage.isPartial {
+                                        Text(coverage.isUncertain ? "Partial · Coverage unknown" : "Partial")
+                                            .font(.caption).foregroundStyle(.secondary)
+                                            .accessibilityIdentifier("nutritionCoverage-\(metric.id)")
+                                    } else if coverage.isUncertain {
+                                        Text("Coverage unknown").font(.caption).foregroundStyle(.secondary)
+                                            .accessibilityIdentifier("nutritionCoverage-\(metric.id)")
+                                    }
+                                } else {
+                                    Text("Unavailable").foregroundStyle(.secondary)
+                                        .accessibilityIdentifier("nutritionValue-\(metric.id)")
+                                }
+                            }
+                        } label: {
+                            Label(metric.name, systemImage: metric.systemImage)
+                        }
+                        if coverage.missing > 0 && !coverage.isUncertain {
+                            Text(missingDetail(metric: metric, count: coverage.missing))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else if coverage.isUncertain {
+                            Text(coverage.isUnavailable || coverage.isPartial ? "Some nutrition unavailable; ingredient coverage unknown."
+                                 : "Ingredient coverage wasn't recorded for every food.")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
                     }
                 }
             }
+        } header: {
+            Text(title)
+        } footer: {
+            Text("Unavailable nutrients aren't treated as zero. Partial totals include only the available values; availability doesn't indicate accuracy.")
         }
+    }
+
+    private func missingDetail(metric: Metric, count: Int) -> String {
+        let missing = (ingredientDetails ?? portions).filter {
+            $0.servings.isFinite && $0.servings > 0 && $0.coverage(of: metric.id).missing > 0
+        }
+        if portions.count == 1, ingredientDetails == nil,
+           portions[0].nutrientCoverage == nil, count == 1 {
+            return "\(metric.name) isn't provided for this food."
+        }
+        let names = missing.map(\.name).joined(separator: ", ")
+        let detail = "\(metric.name) unavailable for \(count) \(count == 1 ? "ingredient" : "ingredients")"
+        if missing.contains(where: { $0.nutrientCoverage != nil }) { return detail + "." }
+        return names.isEmpty ? detail + "." : detail + ": " + names + "."
     }
 }
 
@@ -1088,6 +1324,8 @@ struct FoodEditor: View {
     @Environment(\.modelContext) private var context
     @State private var draft: FoodDraft
     @State private var scanningLabel = false
+    @State private var volumeUnit = VolumeUnit.milliliters
+    @State private var saveError: String?
 
     init(food: Food? = nil, draft: FoodDraft? = nil, onSave: @escaping (Food) -> Void) {
         self.food = food
@@ -1100,7 +1338,7 @@ struct FoodEditor: View {
             Section {
                 textField("Name", text: $draft.name, prompt: "Required")
                 textField("Brand", text: $draft.brand, prompt: "Optional")
-                textField("Serving Size", text: $draft.servingSize, prompt: "e.g. 1 cup or 30 g")
+                textField("Serving Size", text: $draft.servingSize, prompt: "e.g. 1 cup, 30 g or 100 mL")
                 LabeledContent("Serving Weight") {
                     HStack(spacing: 4) {
                         TextField("Serving Weight", value: $draft.gramsPerServing,
@@ -1117,6 +1355,28 @@ struct FoodEditor: View {
                         draft.gramsPerServing = stated
                     }
                 }
+                LabeledContent("Serving Volume") {
+                    HStack(spacing: 4) {
+                        TextField("Serving Volume", value: servingVolume,
+                                  format: .number.precision(.fractionLength(0...volumeUnit.fractionDigits)),
+                                  prompt: Text("Optional"))
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                            .monospacedDigit()
+                            .accessibilityLabel("Serving Volume in \(volumeUnit.title)")
+                        Picker("Serving Volume Unit", selection: $volumeUnit) {
+                            ForEach(VolumeUnit.allCases) { Text($0.label).tag($0) }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .accessibilityIdentifier("servingVolumeUnit")
+                    }
+                }
+                if let stated = draft.statedServingVolume {
+                    Button("Use \(VolumeUnit.milliliters.format(milliliters: stated)) from Serving Size", systemImage: "measuringcup") {
+                        draft.millilitersPerServing = stated
+                    }
+                }
             } footer: {
                 VStack(alignment: .leading, spacing: 6) {
                     switch draft.source {
@@ -1126,7 +1386,7 @@ struct FoodEditor: View {
                     case .label: Text("Filled in from the label. Check each amount against it, and add a name, before saving.")
                     case .manual: EmptyView()
                     }
-                    Text("With a serving weight, you can log this food in grams or ounces.")
+                    Text("A serving weight enables grams and weight ounces. A serving volume enables mL and fluid ounces. U.S. and Imperial fluid ounces have different volumes; choose the one stated on the label.")
                 }
             }
             Section {
@@ -1139,6 +1399,8 @@ struct FoodEditor: View {
                         .font(.subheadline)
                         .textCase(nil)
                 }
+            } footer: {
+                Text("Leave a nutrient blank when unavailable. Enter 0 only when the label states zero.")
             }
             if let barcode = draft.barcode {
                 Section("Barcode") {
@@ -1165,12 +1427,25 @@ struct FoodEditor: View {
                 Button("Save", action: save).disabled(!draft.isValid)
             }
         }
+        .alert("Couldn't Save Food", isPresented: .constant(saveError != nil)) {
+            Button("OK") { saveError = nil }
+        } message: {
+            Text(saveError ?? "")
+        }
     }
 
     private func textField(_ title: String, text: Binding<String>, prompt: String) -> some View {
         LabeledContent(title) {
             TextField(title, text: text, prompt: Text(prompt))
                 .multilineTextAlignment(.trailing)
+        }
+    }
+
+    private var servingVolume: Binding<Double?> {
+        Binding {
+            draft.millilitersPerServing.map { volumeUnit.value(fromMilliliters: $0) }
+        } set: { value in
+            draft.millilitersPerServing = value.map { volumeUnit.milliliters(from: $0) }
         }
     }
 
@@ -1185,11 +1460,11 @@ struct FoodEditor: View {
             HStack {
                 Label(metric.name, systemImage: metric.systemImage)
                 Spacer()
-                TextField("0", value: amount, format: .number.precision(.fractionLength(0...1)))
+                TextField("Unavailable", value: amount, format: .number.precision(.fractionLength(0...1)))
                     .keyboardType(.decimalPad)
                     .multilineTextAlignment(.trailing)
                     .monospacedDigit()
-                    .frame(maxWidth: 90)
+                    .frame(maxWidth: 110)
                     .accessibilityLabel("\(metric.name) in \(option.label)")
                 Text(option.label).foregroundStyle(.secondary)
             }
@@ -1197,6 +1472,7 @@ struct FoodEditor: View {
     }
 
     private func save() {
+        let previous = food?.draft
         let saved: Food
         if let food {
             food.update(from: draft)
@@ -1205,7 +1481,18 @@ struct FoodEditor: View {
             saved = Food(draft)
             context.insert(saved)
         }
-        onSave(saved)
+        do {
+            // A successful Save must survive the app closing immediately afterward.
+            try context.save()
+            onSave(saved)
+        } catch {
+            if let previous {
+                saved.update(from: previous)
+            } else {
+                context.delete(saved)
+            }
+            saveError = error.localizedDescription
+        }
     }
 }
 

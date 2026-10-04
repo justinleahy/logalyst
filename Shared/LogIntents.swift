@@ -229,9 +229,12 @@ extension HealthStore {
         try await saveQuantity(metric, value: value, option: option, date: .now)
         let logged = "Logged \(option.format(value)) for \(metric.name)."
         guard metric.category == .intake,
-              let total = try? await dailyTotals(for: metric, days: 1).last?.value(in: option) else {
+              let day = try? await dailyTotals(for: metric, days: 1).last else {
             return "\(logged)"
         }
-        return "\(logged) Today's total is \(option.format(total))."
+        guard day.hasRecordedData else { return "\(logged) No recorded daily total is available." }
+        let amount = option.format(day.value(in: option))
+        if day.isPartial { return "\(logged) Today's recorded total is partial: \(amount). Some nutrition is unavailable." }
+        return "\(logged) Today's recorded total is \(amount). Coverage may be incomplete."
     }
 }

@@ -168,6 +168,39 @@ struct NutritionLabelWeightTests {
         #expect(draft.nutrients["dietaryEnergyConsumed"] == 75)
     }
 
+    /// The nutrients are scaled to the same weight the serving is given: half a gram, not the 2 in "1/2".
+    @Test func aFractionalGramServingScalesToItsWeight() throws {
+        let label = try #require(label(["Nutrition per 100 g", "Serving size 1/2 g", "Energy 1674 kJ / 400 kcal",
+                                        "Protein 20 g"]))
+        var draft = FoodDraft()
+        draft.apply(label)
+        #expect(draft.gramsPerServing == 0.5)
+        #expect(draft.nutrients["dietaryEnergyConsumed"] == 2)
+        #expect(draft.nutrients["dietaryProtein"] == 0.1)
+    }
+
+    /// A leading decimal point is kept, so ".5 g" is half a gram rather than 5 g.
+    @Test func aLeadingDecimalServingKeepsItsPoint() throws {
+        let label = try #require(label(["Nutrition per 100 g", "Serving size .5 g", "Energy 1674 kJ / 400 kcal",
+                                        "Protein 20 g"]))
+        var draft = FoodDraft()
+        draft.apply(label)
+        #expect(draft.servingSize == ".5 g")
+        #expect(draft.gramsPerServing == 0.5)
+        #expect(draft.nutrients["dietaryEnergyConsumed"] == 2)
+    }
+
+    /// A serving that isn't one weight can't be scaled to, so the food stays per 100 g.
+    @Test func aMultipleServingStaysPer100Grams() throws {
+        let label = try #require(label(["Nutrition per 100 g", "Serving size 2 x (15 g)", "Energy 1674 kJ / 400 kcal",
+                                        "Protein 20 g"]))
+        var draft = FoodDraft()
+        draft.apply(label)
+        #expect(draft.servingSize == "100 g")
+        #expect(draft.gramsPerServing == 100)
+        #expect(draft.nutrients["dietaryEnergyConsumed"] == 400)
+    }
+
     @Test func aEuropeanLabelWithoutAServingIsPer100Grams() throws {
         let label = try #require(label(["Typical values per 100g", "Energy 1046 kJ / 250 kcal", "Fat 10 g", "Protein 5 g"]))
         var draft = FoodDraft()

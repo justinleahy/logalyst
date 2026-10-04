@@ -1,0 +1,87 @@
+DEFINE SCHEMA
+
+    RECORD TYPE CD_Food (
+        CD_barcode             ENCRYPTED STRING,
+        CD_barcode_ckAsset     ASSET,
+        CD_brand               ENCRYPTED STRING,
+        CD_brand_ckAsset       ASSET,
+        CD_created             ENCRYPTED TIMESTAMP,
+        CD_entityName          STRING QUERYABLE SEARCHABLE SORTABLE,
+        CD_gramsPerServing     ENCRYPTED DOUBLE,
+        CD_millilitersPerServing ENCRYPTED DOUBLE,
+        CD_isFavorite          ENCRYPTED INT64,
+        CD_lastLogged          ENCRYPTED TIMESTAMP,
+        CD_moveReceipt         BYTES QUERYABLE SORTABLE,
+        CD_moveReceipt_ckAsset ASSET,
+        CD_name                ENCRYPTED STRING,
+        CD_name_ckAsset        ASSET,
+        CD_nutrients           ENCRYPTED BYTES,
+        CD_nutrients_ckAsset   ASSET,
+        CD_servingSize         ENCRYPTED STRING,
+        CD_servingSize_ckAsset ASSET,
+        CD_uuid                ENCRYPTED STRING,
+        "___createTime"        TIMESTAMP,
+        "___createdBy"         REFERENCE,
+        "___etag"              STRING,
+        "___modTime"           TIMESTAMP,
+        "___modifiedBy"        REFERENCE,
+        "___recordID"          REFERENCE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE CD_Recipe (
+        CD_created                ENCRYPTED TIMESTAMP,
+        CD_entityName             STRING QUERYABLE SEARCHABLE SORTABLE,
+        CD_ingredientData         ENCRYPTED BYTES,
+        CD_ingredientData_ckAsset ASSET,
+        CD_lastLogged             ENCRYPTED TIMESTAMP,
+        CD_moveReceipt            BYTES QUERYABLE SORTABLE,
+        CD_moveReceipt_ckAsset    ASSET,
+        CD_name                   ENCRYPTED STRING,
+        CD_name_ckAsset           ASSET,
+        CD_servings               ENCRYPTED DOUBLE,
+        CD_uuid                   ENCRYPTED STRING,
+        "___createTime"           TIMESTAMP,
+        "___createdBy"            REFERENCE,
+        "___etag"                 STRING,
+        "___modTime"              TIMESTAMP,
+        "___modifiedBy"           REFERENCE,
+        "___recordID"             REFERENCE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE CD_SyncedSetting (
+        CD_entityName          STRING QUERYABLE SEARCHABLE SORTABLE,
+        CD_key                 ENCRYPTED STRING,
+        CD_key_ckAsset         ASSET,
+        CD_moveReceipt         BYTES QUERYABLE SORTABLE,
+        CD_moveReceipt_ckAsset ASSET,
+        CD_updated             ENCRYPTED TIMESTAMP,
+        CD_value               ENCRYPTED BYTES,
+        CD_value_ckAsset       ASSET,
+        "___createTime"        TIMESTAMP,
+        "___createdBy"         REFERENCE,
+        "___etag"              STRING,
+        "___modTime"           TIMESTAMP,
+        "___modifiedBy"        REFERENCE,
+        "___recordID"          REFERENCE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE Users (
+        "___createTime" TIMESTAMP,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE,
+        roles           LIST<INT64>,
+        GRANT WRITE TO "_creator",
+        GRANT READ TO "_world"
+    );
